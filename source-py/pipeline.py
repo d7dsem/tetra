@@ -20,7 +20,7 @@ from typing import List, Optional
 
 import numpy as np
 
-import burst_search, checks, demod, front_end, symbols
+import burst_search, checks, coarse_detect, demod, front_end, symbols
 from snr_estimate import _power as _raw_power, estimate_burst_snr_db
 from config import PipelineConfig
 from health import HealthReport, error
@@ -82,6 +82,27 @@ def demod_burst(y: np.ndarray, s: int, e: int, cfg: PipelineConfig,
         bits=demod.map_dibits(d, cfg.mapping), d=d, snr_db=snr_db, flags=",".join(flags) or "-")
 
 
+def _coarse_matched_filter(xw: np.ndarray, cfg: PipelineConfig) -> np.ndarray:
+    """Альтернатива до front_end.matched_filter(xw, cfg.front) на весь файл:
+    груба детекція активних ділянок (coarse_detect.py) + matched filter лише
+    на них (з запасом filter_margin_samples під крайові ефекти згортки).
+    Решта масиву лишається нулями. Вимикається/вмикається cfg.coarse.enabled.
+
+    ПЕРЕВІРЕНО на file 1 з coarse.merge_fraction=1/16 (поточне значення за
+    замовчуванням у config.py): дає ТОЙ САМИЙ результат (242/242 burst'ів,
+    коефіцієнти в межах 0.08 коефіцієнта когерентності), що й повний прохід.
+    На решті 4 файлів ще НЕ перевірено - звідси cfg.coarse.enabled=False
+    за замовчуванням."""
+    margin = coarse_detect.filter_margin_samples(cfg.front.rrc_span_sym, cfg.front.sps)
+    segments = coarse_detect.coarse_detect(xw, cfg.front.work_fs_hz, cfg.coarse)
+    n = len(xw)
+    y = np.zeros(n, dtype=np.complex64)
+    for cs, ce in segments:
+        s0, e0 = max(0, cs - margin), min(n, ce + margin)
+        y[s0:e0] = front_end.matched_filter(xw[s0:e0], cfg.front)
+    return y
+
+
 def _guard(h: HealthReport, cfg: PipelineConfig, stage: str, fn, *args):
     """Виконує етап; виняток -> fatal ERROR (або повторно, якщо health.reraise)."""
     try:
@@ -135,7 +156,10 @@ def run(x: np.ndarray, fs: float, cfg: Optional[PipelineConfig] = None,
 
     raw_power = _raw_power(xw)  # для SNR: ДО видалення xw нижче
 
-    y, ok = _guard(h, cfg, "front_end", front_end.matched_filter, xw, cfg.front)
+    if cfg.coarse.enabled:
+        y, ok = _guard(h, cfg, "front_end", _coarse_matched_filter, xw, cfg)
+    else:
+        y, ok = _guard(h, cfg, "front_end", front_end.matched_filter, xw, cfg.front)
     if not ok:
         return res
     del xw  # звільнити буфер, якщо це була окрема копія після ресемплінгу
@@ -147,7 +171,7 @@ def run(x: np.ndarray, fs: float, cfg: Optional[PipelineConfig] = None,
     res.search = sr
     h.merge(checks.check_activity(sr, len(y), cfg))
 
-    noise_window = int(round(0.014167 * cfg.front.work_fs_hz))  # ETSI: тривалість таймслота TETRA
+    noise_window = int(round(cfg.coarse.burst_duration_s * cfg.front.work_fs_hz))  # ETSI: таймслот
     first_error = None
     for s, e in sr.final:
         try:
