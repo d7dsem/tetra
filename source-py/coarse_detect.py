@@ -13,21 +13,17 @@
 
 Метод порогу: Оцу (Otsu) на лог-потужності — автоматично знаходить межу між
 двома популяціями (шум/сигнал) без ручного порогу в дБ.
+
+CoarseConfig (параметри тюнінгу, зокрема merge_fraction) живе в config.py,
+єдине джерело істини - тут лише використовується, не визначається заново.
 """
-from dataclasses import dataclass
 from typing import List, Tuple
 
 import numpy as np
 
+from config import CoarseConfig
+
 Segments = List[Tuple[int, int]]
-
-
-@dataclass(frozen=True)
-class CoarseConfig:
-    burst_duration_s: float = 0.014167     # ETSI: тривалість таймслота TETRA
-    smooth_fraction: float = 1 / 128       # частка burst_duration на згладжування
-    merge_fraction: float = 1 / 128        # частка burst_duration: допуск злиття (НЕ протокольна межа)
-    min_len_fraction: float = 1 / 20       # мінімальна довжина сегмента, частка burst_duration
 
 
 def _power(x: np.ndarray) -> np.ndarray:

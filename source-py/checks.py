@@ -308,24 +308,30 @@ def check_bursts(bursts, rejected: int, failed: int, first_error: Optional[str],
 
 # ------------------------------------------------------------------ 6
 def check_patterns(bursts, cfg: PipelineConfig) -> CheckResult:
-    """Оцінка якості виявлення ЕМПІРИЧНИХ фіксованих послідовностей TETRA
-    (FCF/STS/NTS, pattern_check.py) у вже демодульованих бітах burst'ів.
-    Незалежна від порогів пошуку burst'ів перевірка: чи це взагалі схоже
-    на TETRA на рівні бітового вмісту, а не лише форми сигналу (coherence)."""
+    """Оцінка якості виявлення полів TETRA (pattern_check.py), ОКРЕМО по кожному
+    з полів стандарту (бітові значення звірені з ETSI EN 300 392-2 V3.8.1).
+    Незалежна від порогів пошуку burst'ів перевірка: чи це взагалі схоже на
+    TETRA на рівні бітового вмісту, а не лише форми сигналу."""
     r = CheckResult()
     summ = summarize_recording(bursts)
     r.metrics.update(
         pattern_n_bursts=summ.n_bursts,
         pattern_n_symbols_total=summ.n_symbols_total,
-        pattern_n_detected=summ.n_detected,
+        pattern_threshold=summ.threshold,
+        pattern_n_any_detected=summ.n_any_detected,
         pattern_detect_fraction=summ.detect_fraction,
     )
-    if summ.median_err_rate_detected is not None:
-        r.metrics["pattern_median_err_rate"] = summ.median_err_rate_detected
-    for name, cnt in summ.per_field_counts.items():
-        r.metrics[f"pattern_count_{name}"] = cnt
-    if summ.n_bursts and summ.detect_fraction == 0.0:
+    for name, st in summ.per_field.items():
+        r.metrics[f"pattern_{name}_status"] = st.status
+        if st.status == "ok":
+            r.metrics[f"pattern_{name}_checked"] = st.n_checked
+            r.metrics[f"pattern_{name}_exact"] = st.n_exact
+            r.metrics[f"pattern_{name}_within_threshold"] = st.n_within_threshold
+            r.metrics[f"pattern_{name}_found"] = st.n_found
+            if st.median_err_rate is not None:
+                r.metrics[f"pattern_{name}_median_err"] = st.median_err_rate
+    if summ.n_bursts and summ.n_any_detected == 0:
         r.add(warn("patterns", "NO_PATTERNS_FOUND",
-                   "жодної з емпіричних послідовностей FCF/STS/NTS не знайдено в жодному burst'і: "
-                   "або це не TETRA, або дуже слабкий сигнал/неправильна демодуляція"))
+                   "жодного з полів TETRA (FCF/NTS1/NTS2/NTS3/STS/ETS/TAIL) не знайдено в "
+                   "жодному burst'і: або це не TETRA, або дуже слабкий сигнал/неправильна демодуляція"))
     return r

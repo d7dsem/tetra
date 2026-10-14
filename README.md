@@ -1,70 +1,61 @@
-# tetra_demod (PoC)
+# tetra (PoC)
 
-Офлайн-демодулятор TETRA π/4-DQPSK з IQ-файлів. Канального декодування і кореляції зі
-sync-послідовностями поки немає: на виході «сирі» біти burst'ів.
+Офлайн-демодулятор TETRA π/4-DQPSK з IQ-файлів (WAV int16 2ch або raw `.cs16`).
+Канального декодування (FEC/дескремблювання/деперемеження) немає: на виході
+"сирі" демодульовані біти burst'ів плюс діагностика якості й виявлення полів TETRA.
+
+## Структура репозиторію
+
+```
+bin/
+  tetra_demod        - sh-обгортка запуску (знаходить свій каталог, cd, exec)
+source-py/
+  tetra_demod.py     - точка входу (CLI, argparse)
+  config.py          - ЄДИНЕ місце всіх параметрів (секція CONSTANTS)
+  front_end.py       - ресемплінг, RRC matched filter
+  burst_search.py    - пошук burst'ів (поріг+гістерезис на matched-filtered сигналі)
+  coarse_detect.py   - альтернативна груба детекція ДО matched filter (вимкнена
+                       за замовчуванням, див. docs/cheat-shit.md)
+  symbols.py         - символьна синхронізація (Oerder-Meyr)
+  demod.py           - диференціальна демодуляція, мапінг дібітів
+  snr_estimate.py    - SNR на сирому масиві, часовий метод
+  snr_freq.py        - SNR, частотний метод (FFT)
+  pattern_check.py   - пошук полів TETRA (FCF/NTS/STS/ETS/TAIL), звірено з
+                       ETSI EN 300 392-2
+  checks.py          - діагностичні перевірки (HealthReport findings)
+  health.py          - модель Finding/CheckResult/HealthReport
+  memcheck.py        - оцінка потрібної пам'яті ДО завантаження файлу
+  pipeline.py         - оркестратор, викликає етапи по черзі
+  io_stage.py        - читання WAV/raw, запис .txt/.bin/.bin2/.bin3
+  synth.py           - генератор синтетичних сигналів для тестів
+  test_*.py          - тести (unittest)
+docs/
+  cheat-shit.md      - практичні команди й шпаргалка (цей архів)
+```
 
 ## Запуск
 
 ```bash
-python3 -m tetra_demod in.wav -o bursts [--set search.on_db=10] [--plot]
-python3 -m tetra_demod in.wav --diagnose-only --report health.json
-python3 -m tetra_demod in.wav --mem-only
-python3 -m tetra_demod --print-config
+chmod +x bin/tetra_demod        # один раз
+./bin/tetra_demod in.wav -o out
 ```
+
+Працює з довільного каталогу (не лише з кореня репо), якщо `bin/` є у PATH
+або викликається за шляхом - сам знаходить `source-py/` відносно себе.
 
 ## Тести
 
 ```bash
-python3 -m unittest discover -s tests -t . -v
+cd source-py
+python3 -m unittest discover -p "test_*.py" -v
 ```
 
 ## Параметри
 
-Усі в одному місці: `tetra_demod/config.py`, секція CONSTANTS.
-З командного рядка: `--set група.параметр=значення` (можна повторювати).
+Усі в `source-py/config.py`, секція CONSTANTS. Перевизначення з командного рядка:
+`--set група.параметр=значення` (можна кілька разів). `--print-config` показує
+поточні значення у JSON.
 
-## Діагностика й деградація
+## Детальніше
 
-Кожен етап діагностики ізольований (`checks.py`): чиста функція `дані + конфіг -> CheckResult`.
-Жодних припущень про пристрій захоплення: лише вимірювання з даних.
-
-┌─────┬─────────────────────┬──────────────────────────────────┬────────────────────────────────────────────┐
-│ #   │ Етап                │ Що перевіряє                     │ Коди                                       │
-├─────┼─────────────────────┼──────────────────────────────────┼────────────────────────────────────────────┤
-│ 0   │ check_meta          │ fs, довжина                      │ BAD_FS, FS_TOO_LOW, EMPTY_INPUT,           │
-│     │                     │                                  │ INPUT_TOO_SHORT (fatal)                    │
-├─────┼─────────────────────┼──────────────────────────────────┼────────────────────────────────────────────┤
-│ 1   │ sanitize +          │ NaN/Inf                          │ NONFINITE_SAMPLES, NONFINITE_TOO_MANY      │
-│     │ check_nonfinite     │                                  │ (fatal)                                    │
-├─────┼─────────────────────┼──────────────────────────────────┼────────────────────────────────────────────┤
-│ 2   │ check_levels        │ рівень, кліпінг, DC, кругова     │ SILENT_INPUT (fatal), LOW_LEVEL, CLIPPING, │
-│     │                     │ симетрія IQ                      │ DC_OFFSET, IQ_IMPROPER                     │
-├─────┼─────────────────────┼──────────────────────────────────┼────────────────────────────────────────────┤
-│ 3   │ check_spectrum      │ грубий зсув, ширина, DC-пік,     │ COARSE_OFFSET, BANDWIDTH, DC_SPIKE,        │
-│     │                     │ лінія символьної швидкості, пауз │ SYMBOL_LINE, CONTINUOUS_SIGNAL,            │
-│     │                     │ немає                            │ SPEC_NO_SIGNAL                             │
-├─────┼─────────────────────┼──────────────────────────────────┼────────────────────────────────────────────┤
-│ 4   │ check_activity      │ пошук burst'ів                   │ NO_BURSTS, SEGMENTS_TOO_SHORT              │
-├─────┼─────────────────────┼──────────────────────────────────┼────────────────────────────────────────────┤
-│ 5   │ check_bursts        │ якість і стабільність burst'ів,  │ LOW_COHERENCE, FREQ_NEAR_LIMIT,            │
-│     │                     │ спектр проти burst'ів            │ FREQ_UNSTABLE, FREQ_ALIAS, MANY_REJECTED,  │
-│     │                     │                                  │ BURST_EXCEPTION                            │
-└─────┴─────────────────────┴──────────────────────────────────┴────────────────────────────────────────────┘
-
-- Статус запуску: `ok` -> `degraded` (є WARN, результат є) -> `failed` (є ERROR).
-- Код виходу: 0 ok/degraded, 1 degraded за `--strict`, 2 failed.
-- `health.policy=continue` (за замовчуванням): нефатальна ERROR не зупиняє обробку
-  (результат є, але ненадійний). `abort`: зупинитись.
-- Fatal-знахідки зупиняють завжди.
-- Винятки етапів і burst'ів не валять процес (`health.reraise=true` вимикає це для налагодження).
-- Підозрілі burst'и у виході мають прапорці LOWCOH / NEARLIM.
-
-## Формат виходу
-
-Один рядок на burst:
-
-```
-t_start_s n_sym freq_hz coherence phase_rms_deg flags bits
-```
-
-Опис колонок і приклади команд: див. `cheat-shit.md`.
+Команди, формат виходу, таблиця кодів діагностики, тюнінг - у `docs/cheat-shit.md`.

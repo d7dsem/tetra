@@ -13,7 +13,9 @@ import os
 
 from config import PipelineConfig, apply_overrides
 from health import HealthReport, error
-from io_stage import load_iq, probe_input, write_bits_bin, write_bursts
+from io_stage import (load_iq, probe_input, write_bits_bin, write_bits_bin_aligned,
+                      write_bits_bin_phase_aligned, write_bursts)
+from pattern_check import SLOT_BITS
 from memcheck import available_memory_bytes, estimate_memory, format_report, memory_findings
 from pipeline import describe, run
 
@@ -56,10 +58,30 @@ def main(argv=None):
             print("[ЗВЕДЕННЯ]")
             print(f"    burst'ів:          {m['pattern_n_bursts']}")
             print(f"    символів (сума):   {m['pattern_n_symbols_total']}")
-            det = f"{m['pattern_n_detected']}/{m['pattern_n_bursts']} ({m['pattern_detect_fraction']:.1%})"
-            print(f"    патерн виявлено:   {det}")
-            if "pattern_median_err_rate" in m:
-                print(f"    медіана помилок:   {m['pattern_median_err_rate']:.1%} (у виявлених полях)")
+            det = f"{m['pattern_n_any_detected']}/{m['pattern_n_bursts']} ({m['pattern_detect_fraction']:.1%})"
+            print(f"    хоч щось знайдено: {det}")
+            thr = m['pattern_threshold']
+            print(f"    поріг помилок:     {thr:.0%}  (тюнінг: pattern_check.DETECT_THRESHOLD)")
+            print("    по полях (ETSI EN 300 392-2, розділ 9.4.4.3):")
+            from pattern_check import KNOWN_FIELDS
+            NAME_W = 14   # >= найдовшого підпису "NTS1 (22bit)" (12) + запас
+            print(f"      {'назва':<{NAME_W}}{'перевірено':>12}{'чисто (0%)':>13}"
+                 f"{f'з пом. (≤{thr:.0%})':>15}{'медіана пом.':>14}")
+            for name in ("FCF", "NTS1", "NTS2", "NTS3", "STS", "ETS", "TAIL", "PHASE"):
+                status = m.get(f"pattern_{name}_status")
+                if status is None:
+                    continue
+                pattern, _, _ = KNOWN_FIELDS[name]
+                label = f"{name} ({len(pattern)}bit)" if pattern is not None else f"{name} (?bit)"
+                if status != "ok":
+                    print(f"      {label:<{NAME_W}} не фіксована послідовність (обчислюється динамічно)")
+                    continue
+                checked = m.get(f"pattern_{name}_checked", 0)
+                exact = m.get(f"pattern_{name}_exact", 0)
+                within = m.get(f"pattern_{name}_within_threshold", 0)
+                err = m.get(f"pattern_{name}_median_err")
+                err_s = f"{err:.1%}" if err is not None else "-"
+                print(f"      {label:<{NAME_W}}{checked:>12}{exact:>13}{within:>15}{err_s:>14}")
         if a.report:
             h.to_json(a.report)
         return h.exit_code(a.strict)
@@ -89,8 +111,11 @@ def main(argv=None):
         stem = a.out or os.path.splitext(a.infile)[0]
         write_bursts(stem + ".txt", res.bursts)
         write_bits_bin(stem + ".bin", res.bursts)
-        artefacts += [stem + ".txt", stem + ".bin"]
-        print(f"-> {stem}.txt, {stem}.bin")
+        write_bits_bin_aligned(stem + ".bin2", res.bursts, SLOT_BITS)
+        write_bits_bin_phase_aligned(stem + ".bin3", res.bursts, SLOT_BITS,
+                                     cfg.front.work_fs_hz, cfg.front.symbol_rate_hz)
+        artefacts += [stem + ".txt", stem + ".bin", stem + ".bin2", stem + ".bin3"]
+        print(f"-> {stem}.txt, {stem}.bin, {stem}.bin2, {stem}.bin3")
     if a.plot and res.search is not None:
         import matplotlib.pyplot as plt
         import numpy as np

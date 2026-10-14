@@ -99,6 +99,17 @@ HEALTH_FREQ_SPREAD_WARN_HZ = 300.0
 HEALTH_REJECTED_SHARE_WARN = 0.5
 HEALTH_FREQ_MISMATCH_HZ = 1000.0 # розбіжність центру спектра й медіани зсуву по burst'ах
 
+# --- Груба детекція перед matched filter (coarse_detect.py) -----------
+# ВИМКНЕНО за замовчуванням: перевірено лише на одному файлі (file 1),
+# дає прискорення (фільтрує ~20% замість 100% файлу), але ще не прогнано
+# на решті записів. Старий шлях (фільтр усього файлу) лишається дефолтом.
+COARSE_ENABLED = False
+COARSE_BURST_DURATION_S = 0.014167   # ETSI: тривалість таймслота TETRA
+COARSE_SMOOTH_FRACTION = 1 / 128
+COARSE_MERGE_FRACTION = 1 / 16       # ВАЛІДОВАНО на file 1: 1/128 дробив слабкі
+                                      # burst'и (235/242), 1/16 дав 242/242 без шкоди
+COARSE_MIN_LEN_FRACTION = 1 / 20
+
 # =====================================================================
 #                       DATACLASSES (структура)
 # =====================================================================
@@ -207,6 +218,15 @@ class HealthConfig:
 
 
 @dataclass(frozen=True)
+class CoarseConfig:
+    enabled: bool = COARSE_ENABLED           # перемикач: --set coarse.enabled=true
+    burst_duration_s: float = COARSE_BURST_DURATION_S
+    smooth_fraction: float = COARSE_SMOOTH_FRACTION
+    merge_fraction: float = COARSE_MERGE_FRACTION
+    min_len_fraction: float = COARSE_MIN_LEN_FRACTION
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     front: FrontEndConfig = field(default_factory=FrontEndConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
@@ -216,6 +236,7 @@ class PipelineConfig:
     quality: QualityConfig = field(default_factory=QualityConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
+    coarse: CoarseConfig = field(default_factory=CoarseConfig)
 
 
 # =====================================================================
