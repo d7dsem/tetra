@@ -51,6 +51,15 @@ def main(argv=None):
             print("[ARTEFACTS]")
             for p in artefacts:
                 print(f"    {os.path.abspath(p)}  {os.path.getsize(p)} B")
+        m = h.metrics
+        if "pattern_n_bursts" in m:
+            print("[ЗВЕДЕННЯ]")
+            print(f"    burst'ів:          {m['pattern_n_bursts']}")
+            print(f"    символів (сума):   {m['pattern_n_symbols_total']}")
+            det = f"{m['pattern_n_detected']}/{m['pattern_n_bursts']} ({m['pattern_detect_fraction']:.1%})"
+            print(f"    патерн виявлено:   {det}")
+            if "pattern_median_err_rate" in m:
+                print(f"    медіана помилок:   {m['pattern_median_err_rate']:.1%} (у виявлених полях)")
         if a.report:
             h.to_json(a.report)
         return h.exit_code(a.strict)

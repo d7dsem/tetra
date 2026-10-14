@@ -228,9 +228,13 @@ class TestActivityAndBursts(unittest.TestCase):
 
 class TestPipelineStability(unittest.TestCase):
     def test_clean_run_is_ok(self):
+        # synth.py генерує ВИПАДКОВІ біти (без TETRA-патернів), тож check_patterns
+        # справедливо не знаходить FCF/STS/NTS -> статус "degraded" (NO_PATTERNS_FOUND).
+        # Це коректна поведінка перевірки, не регресія: решта ознак, як і раніше, чисті.
         x, _ = clean()
         res = run(x, FS)
-        self.assertEqual(res.health.status, "ok", res.health.format_text())
+        self.assertEqual(res.health.status, "degraded", res.health.format_text())
+        self.assertTrue(res.health.has("NO_PATTERNS_FOUND"))
         self.assertEqual(len(res.bursts), 3)
         self.assertTrue(all(b.flags == "-" for b in res.bursts))
 
@@ -333,12 +337,15 @@ class TestCli(unittest.TestCase):
         self.assertEqual(self.cli(self.noise, "--strict"), 1)
 
     def test_good_input_ok_and_flags_column(self):
-        self.assertEqual(self.cli(self.tetra, "--strict"), 0)
+        # --strict без --set memory/health... тут не 0: синтетичні биты random,
+        # NO_PATTERNS_FOUND дає "degraded" -> exit 1 за --strict (див. test_clean_run_is_ok).
+        self.assertEqual(self.cli(self.tetra, "--strict"), 1)
         with open(self.out) as fh:
             first = fh.readline().split()
-        self.assertEqual(len(first), 7)
-        self.assertEqual(first[5], "-")
-        self.assertTrue(set(first[6]) <= {"0", "1"})
+        # t_start_s start_sample n_sym n_samples snr_db freq_hz coherence phase_rms_deg flags bits
+        self.assertEqual(len(first), 10)
+        self.assertEqual(first[8], "-")
+        self.assertTrue(set(first[9]) <= {"0", "1"})
 
     def test_report_json_and_diagnose_only(self):
         rep = os.path.join(self.d, "rep.json")

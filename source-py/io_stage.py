@@ -4,7 +4,10 @@
   load_iq()      файл -> (fs, complex64 IQ)   WAV int16 2ch або raw .cs16 (+fs)
   write_bursts() burst'и -> текстовий файл
   write_bits_bin() біти burst'ів підряд -> бінарний файл (2 біти на символ)
-Формат рядка: t_start_s n_sym freq_hz coherence phase_rms_deg flags bits
+Формат рядка: t_start_s start_sample n_sym n_samples snr_db freq_hz coherence phase_rms_deg flags bits
+(start_sample, n_samples: позиція і довжина burst'а в СИРИХ семплах, work_fs_hz Гц -
+ ті самі індекси, що й у вхідному масиві ДО matched filter, для дослідження сирого запису)
+(snr_db: часовий метод, на сирому масиві до matched filter; '-' якщо недоступно)
 (flags: '-' або LOWCOH,NEARLIM)
 """
 import numpy as np
@@ -43,7 +46,8 @@ def load_iq(path: str, fs_hint=None):
 def write_bursts(path: str, bursts) -> None:
     with open(path, "w") as f:
         for b in bursts:
-            f.write(f"{b.t_start_s:.6f} {b.n_sym} {b.freq_hz:+.1f} "
+            snr_s = f"{b.snr_db:+.2f}" if b.snr_db is not None else "-"
+            f.write(f"{b.t_start_s:.6f} {b.start} {b.n_sym} {b.end - b.start} {snr_s} {b.freq_hz:+.1f} "
                     f"{b.coherence:.3f} {b.phase_rms_deg:.1f} {b.flags} "
                     f"{''.join(map(str, b.bits))}\n")
 
