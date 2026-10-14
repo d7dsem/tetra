@@ -18,6 +18,7 @@ from burst_search import SearchResult, power
 from config import PipelineConfig
 from demod import ambiguity_hz
 from health import CheckResult, error, info, warn
+from pattern_check import summarize_recording
 
 EPS = 1e-30
 
@@ -302,4 +303,29 @@ def check_bursts(bursts, rejected: int, failed: int, first_error: Optional[str],
                    f"зсув частоти між burst'ами розкиданий (σ={np.std(freq):.0f} Гц): перевірте, "
                    "чи в записі одне джерело й чи частота не дрейфує",
                    float(np.std(freq)), h.freq_spread_warn_hz))
+    return r
+
+
+# ------------------------------------------------------------------ 6
+def check_patterns(bursts, cfg: PipelineConfig) -> CheckResult:
+    """Оцінка якості виявлення ЕМПІРИЧНИХ фіксованих послідовностей TETRA
+    (FCF/STS/NTS, pattern_check.py) у вже демодульованих бітах burst'ів.
+    Незалежна від порогів пошуку burst'ів перевірка: чи це взагалі схоже
+    на TETRA на рівні бітового вмісту, а не лише форми сигналу (coherence)."""
+    r = CheckResult()
+    summ = summarize_recording(bursts)
+    r.metrics.update(
+        pattern_n_bursts=summ.n_bursts,
+        pattern_n_symbols_total=summ.n_symbols_total,
+        pattern_n_detected=summ.n_detected,
+        pattern_detect_fraction=summ.detect_fraction,
+    )
+    if summ.median_err_rate_detected is not None:
+        r.metrics["pattern_median_err_rate"] = summ.median_err_rate_detected
+    for name, cnt in summ.per_field_counts.items():
+        r.metrics[f"pattern_count_{name}"] = cnt
+    if summ.n_bursts and summ.detect_fraction == 0.0:
+        r.add(warn("patterns", "NO_PATTERNS_FOUND",
+                   "жодної з емпіричних послідовностей FCF/STS/NTS не знайдено в жодному burst'і: "
+                   "або це не TETRA, або дуже слабкий сигнал/неправильна демодуляція"))
     return r

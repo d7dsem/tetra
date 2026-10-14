@@ -21,6 +21,7 @@ from typing import List, Optional
 import numpy as np
 
 import burst_search, checks, demod, front_end, symbols
+from snr_estimate import _power as _raw_power, estimate_burst_snr_db
 from config import PipelineConfig
 from health import HealthReport, error
 
@@ -37,6 +38,7 @@ class BurstResult:
     phase_rms_deg: float
     bits: np.ndarray
     d: np.ndarray         # диф. символи після корекції (для діаграм)
+    snr_db: Optional[float] = None   # часовий метод, на сирому масиві (до matched filter)
     flags: str = "-"      # LOWCOH, NEARLIM (через кому) або "-"
 
 
@@ -51,7 +53,9 @@ class PipelineResult:
     failed: int = 0
 
 
-def demod_burst(y: np.ndarray, s: int, e: int, cfg: PipelineConfig) -> Optional[BurstResult]:
+def demod_burst(y: np.ndarray, s: int, e: int, cfg: PipelineConfig,
+                raw_power: Optional[np.ndarray] = None, all_segments=None,
+                noise_window_samples: int = 0) -> Optional[BurstResult]:
     fe = cfg.front
     tau = symbols.estimate_timing(y[s:e], fe.sps)
     sym = symbols.sample_symbols(y, s, e, tau, fe, cfg.timing)
@@ -63,6 +67,9 @@ def demod_burst(y: np.ndarray, s: int, e: int, cfg: PipelineConfig) -> Optional[
         theta = demod.estimate_freq_offset(d)
         demod.correct_freq(d, theta)     # in-place
     coh, rms = demod.quality_metrics(d)
+    snr_db = None
+    if raw_power is not None and all_segments is not None:
+        snr_db = estimate_burst_snr_db(raw_power, (s, e), all_segments, noise_window_samples)
     freq_hz = theta * fe.symbol_rate_hz / (2 * np.pi)
     flags = []
     if coh < cfg.health.flag_min_coherence:
@@ -72,7 +79,7 @@ def demod_burst(y: np.ndarray, s: int, e: int, cfg: PipelineConfig) -> Optional[
     return BurstResult(
         start=s, end=e, t_start_s=s / fe.work_fs_hz, tau=tau, n_sym=len(d) + 1,
         freq_hz=freq_hz, coherence=coh, phase_rms_deg=rms,
-        bits=demod.map_dibits(d, cfg.mapping), d=d, flags=",".join(flags) or "-")
+        bits=demod.map_dibits(d, cfg.mapping), d=d, snr_db=snr_db, flags=",".join(flags) or "-")
 
 
 def _guard(h: HealthReport, cfg: PipelineConfig, stage: str, fn, *args):
@@ -126,6 +133,8 @@ def run(x: np.ndarray, fs: float, cfg: Optional[PipelineConfig] = None,
     if _stop(h, cfg):
         return res
 
+    raw_power = _raw_power(xw)  # для SNR: ДО видалення xw нижче
+
     y, ok = _guard(h, cfg, "front_end", front_end.matched_filter, xw, cfg.front)
     if not ok:
         return res
@@ -138,10 +147,11 @@ def run(x: np.ndarray, fs: float, cfg: Optional[PipelineConfig] = None,
     res.search = sr
     h.merge(checks.check_activity(sr, len(y), cfg))
 
+    noise_window = int(round(0.014167 * cfg.front.work_fs_hz))  # ETSI: тривалість таймслота TETRA
     first_error = None
     for s, e in sr.final:
         try:
-            b = demod_burst(y, s, e, cfg)
+            b = demod_burst(y, s, e, cfg, raw_power, sr.final, noise_window)
         except Exception as ex:                              # noqa: BLE001
             if cfg.health.reraise:
                 raise
@@ -155,6 +165,7 @@ def run(x: np.ndarray, fs: float, cfg: Optional[PipelineConfig] = None,
 
     h.merge(checks.check_bursts(res.bursts, res.rejected, res.failed, first_error, cfg,
                                 h.metrics.get("spec_coarse_offset_hz")))
+    h.merge(checks.check_patterns(res.bursts, cfg))
     return res
 
 
