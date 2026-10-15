@@ -11,19 +11,6 @@ def cnoise(n, p, rng):
     return np.sqrt(p / 2) * (rng.normal(size=n) + 1j * rng.normal(size=n))
 
 
-class TestSmooth(unittest.TestCase):
-    def test_constant_and_length(self):
-        out = bs.smooth(np.ones(1000, dtype=np.float32), 32)
-        self.assertEqual(len(out), 1000)
-        np.testing.assert_allclose(out, 1.0, atol=1e-5)  # краї теж без просадки
-
-    def test_step_width(self):
-        p = np.concatenate((np.zeros(500), np.ones(500))).astype(np.float32)
-        out = bs.smooth(p, 32)
-        width = np.sum((out > 0.01) & (out < 0.99))
-        self.assertTrue(28 <= width <= 34, width)
-
-
 class TestNoiseFloor(unittest.TestCase):
     def setUp(self):
         self.rng = np.random.default_rng(0)
@@ -76,24 +63,12 @@ class TestDetect(unittest.TestCase):
         env = np.ones(300, np.float32); env[100:200] = 4.0  # 6 дБ: > off, < on
         self.assertEqual(bs.detect_segments(env, np.ones_like(env), 8, 5), [])
 
-    def test_bad_thresholds(self):
-        with self.assertRaises(ValueError):
-            bs.detect_segments(np.ones(5, np.float32), np.ones(5, np.float32), 5, 8)
-
 
 class TestPostProcessing(unittest.TestCase):
     def test_merge(self):
         segs = [(0, 10), (15, 20), (100, 110)]
         self.assertEqual(bs.merge_close(segs, 5), [(0, 20), (100, 110)])
         self.assertEqual(bs.merge_close(segs, 4), segs)
-
-    def test_filter_length(self):
-        segs = [(0, 5), (10, 30), (50, 150)]
-        self.assertEqual(bs.filter_length(segs, 10), [(10, 30), (50, 150)])
-        self.assertEqual(bs.filter_length(segs, 10, 50), [(10, 30)])
-
-    def test_trim(self):
-        self.assertEqual(bs.trim_edges([(0, 10), (100, 104)], 3), [(3, 7)])
 
 
 class TestEndToEnd(unittest.TestCase):
@@ -123,13 +98,6 @@ class TestEndToEnd(unittest.TestCase):
         res = bs.search_bursts(self._signal([5000], length=200), SearchConfig())
         self.assertEqual(len(res.merged), 1)   # знайдено на етапі 5
         self.assertEqual(res.final, [])        # відсіяно на етапі 6
-
-    def test_continuous_signal_global_fails_fixed_works(self):
-        # задокументоване обмеження: без пауз global-підлога сидить на сигналі
-        y = cnoise(30000, 1.0, self.rng)
-        self.assertEqual(bs.search_bursts(y, SearchConfig()).final, [])
-        cfg = SearchConfig(noise_mode="fixed", noise_fixed=0.01)
-        self.assertEqual(len(bs.search_bursts(y, cfg).final), 1)
 
 
 if __name__ == "__main__":

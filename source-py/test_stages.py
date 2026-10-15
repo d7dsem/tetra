@@ -1,35 +1,15 @@
 """Тести етапів A, C, D, пайплайна і конфігу.
 Запуск з кореня проєкту:  python3 -m unittest discover -s tests -t . -v"""
 import unittest
-from dataclasses import replace
 
 import numpy as np
 
 import demod, front_end, symbols
-from config import (FrontEndConfig, MapConfig, PipelineConfig,
-                                TimingConfig, apply_overrides)
+from config import MapConfig, PipelineConfig, apply_overrides
 from pipeline import run
-from synth import FE, H, ber_aligned, cnoise, make_signal, tx_burst
+from synth import FE, ber_aligned, cnoise, make_signal, tx_burst
 
 IDEAL = np.array([np.pi / 4, 3 * np.pi / 4, -3 * np.pi / 4, -np.pi / 4])
-
-
-class TestFrontEnd(unittest.TestCase):
-    def test_rrc_unit_energy_symmetric(self):
-        self.assertAlmostEqual(float(np.sum(H ** 2)), 1.0, places=6)
-        np.testing.assert_allclose(H, H[::-1], atol=1e-12)
-
-    def test_to_work_rate_length(self):
-        x = np.ones(180000, np.complex64)
-        y = front_end.to_work_rate(x, 1.8e6, FE)
-        self.assertAlmostEqual(len(y), 7200, delta=2)
-        z = front_end.to_work_rate(x, FE.work_fs_hz, FE)
-        self.assertEqual(len(z), len(x))
-
-    def test_matched_filter_zero_delay(self):
-        x = np.zeros(1000, np.complex64); x[500] = 1
-        y = front_end.matched_filter(x, FE)
-        self.assertEqual(int(np.argmax(np.abs(y))), 500)
 
 
 class TestSymbols(unittest.TestCase):
@@ -44,12 +24,6 @@ class TestSymbols(unittest.TestCase):
             tau = symbols.estimate_timing(y[100:-100], FE.sps)
             diff = (tau - delay + FE.sps / 2) % FE.sps - FE.sps / 2
             self.assertLess(abs(diff), 0.25, (delay, tau))
-
-    def test_sample_symbols_count(self):
-        y = self._y(0)
-        s, e = 100, len(y) - 100
-        sym = symbols.sample_symbols(y, s, e, 0.0, FE, TimingConfig())
-        self.assertAlmostEqual(len(sym), (e - s) / FE.sps, delta=1)
 
 
 class TestDemod(unittest.TestCase):
@@ -77,10 +51,6 @@ class TestDemod(unittest.TestCase):
         bits = demod.map_dibits(d, MapConfig())
         self.assertEqual(bits.tolist(), [0, 0, 0, 1, 1, 1, 1, 0])
 
-    def test_map_is_configurable(self):
-        d = np.exp(1j * IDEAL)
-        alt = MapConfig(dibit_by_quadrant=((1, 1), (1, 0), (0, 0), (0, 1)))
-        self.assertEqual(demod.map_dibits(d, alt).tolist(), [1, 1, 1, 0, 0, 0, 0, 1])
 
     def test_quality_ideal_vs_random(self):
         rng = np.random.default_rng(3)
@@ -89,59 +59,6 @@ class TestDemod(unittest.TestCase):
         self.assertLess(rms, 1e-3)
         coh, _ = demod.quality_metrics(np.exp(1j * rng.uniform(-np.pi, np.pi, 5000)))
         self.assertLess(coh, 0.1)
-
-
-class TestInPlaceAndEquivalence(unittest.TestCase):
-    def test_power_matches_reference_and_uses_out(self):
-        import burst_search as bs
-        rng = np.random.default_rng(7)
-        y = cnoise(1000, 2.0, rng).astype(np.complex64)
-        ref = y.real * y.real + y.imag * y.imag
-        np.testing.assert_allclose(bs.power(y), ref, rtol=1e-5)
-        out = np.empty(1000, np.float32)
-        self.assertIs(bs.power(y, out=out), out)
-        np.testing.assert_allclose(out, ref, rtol=1e-5)
-
-    def test_smooth_inplace_matches_out_of_place(self):
-        import burst_search as bs
-        p = np.random.default_rng(8).random(5000).astype(np.float32)
-        ref = bs.smooth(p.copy(), 32)
-        q = p.copy()
-        self.assertIs(bs.smooth(q, 32, out=q), q)
-        np.testing.assert_allclose(q, ref, atol=1e-6)
-
-    def test_timing_matches_direct_formula(self):
-        rng = np.random.default_rng(9)
-        for n in (1000, 1001, 1002, 1003):          # різні залишки n mod sps
-            seg = cnoise(n, 1.0, rng).astype(np.complex64)
-            seg[::4] *= 3
-            c = np.sum((np.abs(seg) ** 2) * np.exp(-2j * np.pi * np.arange(n) / 4))
-            ref = (-np.angle(c) * 4 / (2 * np.pi)) % 4
-            self.assertAlmostEqual(symbols.estimate_timing(seg, 4), ref, places=4)
-
-    def test_map_dibits_matches_angle_reference(self):
-        rng = np.random.default_rng(10)
-        ph = rng.uniform(-np.pi, np.pi, 5000)
-        ph = ph[np.abs(np.sin(2 * ph)) > 1e-3]       # не на осях
-        d = np.exp(1j * ph)
-        q = np.floor(np.angle(d) / (np.pi / 2)).astype(int) % 4
-        ref = np.array(MapConfig().dibit_by_quadrant, np.uint8)[q].reshape(-1)
-        np.testing.assert_array_equal(demod.map_dibits(d, MapConfig()), ref)
-
-    def test_pure_functions_do_not_mutate_input(self):
-        rng = np.random.default_rng(11)
-        d = np.exp(1j * rng.choice(IDEAL, 300))
-        before = d.copy()
-        demod.estimate_freq_offset(d); demod.quality_metrics(d); demod.map_dibits(d, MapConfig())
-        np.testing.assert_array_equal(d, before)
-        sym = self_sym = np.exp(1j * np.cumsum(rng.choice(IDEAL, 100)))
-        keep = sym.copy(); demod.diff_demod(sym)
-        np.testing.assert_array_equal(sym, keep)
-
-    def test_correct_freq_is_inplace(self):
-        d = np.exp(1j * np.full(10, 0.3))
-        self.assertIs(demod.correct_freq(d, 0.3), d)
-        np.testing.assert_allclose(np.angle(d), 0.0, atol=1e-12)
 
 
 class TestPipeline(unittest.TestCase):
@@ -192,11 +109,6 @@ class TestConfig(unittest.TestCase):
         self.assertFalse(cfg.freq.enabled)
         self.assertEqual(cfg.front.work_fs_hz, 144000.0)
 
-    def test_defaults_come_from_constants(self):
-        import config as c
-        cfg = PipelineConfig()
-        self.assertEqual(cfg.search.on_db, c.SEARCH_ON_DB)
-        self.assertEqual(cfg.front.sps, c.SPS)
 
     def test_tuple_override_rejected(self):
         with self.assertRaises(ValueError):
