@@ -16,10 +16,12 @@
   NTS1  - зі стандарту (формула 9.4, normal training sequence 1, n1..n22).
           Збігається з нашим попереднім емпіричним значенням ПОБІТОВО.
   NTS2  - зі стандарту (формула 9.5, normal training sequence 2, p1..p22).
-  NTS3  - зі стандарту (формула 9.6, normal training sequence 3, q1..q22).
-          Використовується в start/stop burst та discontinuous sync burst,
-          НЕ в normal uplink/downlink burst - додано понад початкові 7,
-          бо явно присутнє в тих самих даних (sync-burst'и).
+  NTS3  - зі стандарту (формула 9.6, normal training sequence 3, q1..q22;
+          9.4.4.3.2). Допоміжна послідовність, розкладена частинами по краях
+          двох послідовних downlink burst'ів: у continuous q11..q22 на початку
+          і q1..q10 в кінці, у discontinuous q21..q22 і q1..q2. У uplink
+          burst'ах її немає, цілою 22-бітною в одному burst'і вона не зустрічається
+          (розкладки - docs/burst-structures.md).
   STS   - зі стандарту (формула 9.11, synchronization training sequence,
           y1..y38). Збігається з нашим попереднім емпіричним значенням
           ПОБІТОВО, і з незалежним стороннім джерелом (gophertrunk.org).
