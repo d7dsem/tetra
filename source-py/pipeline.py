@@ -88,7 +88,7 @@ def _coarse_matched_filter(xw: np.ndarray, cfg: PipelineConfig) -> np.ndarray:
     на них (з запасом filter_margin_samples під крайові ефекти згортки).
     Решта масиву лишається нулями. Вимикається/вмикається cfg.coarse.enabled.
 
-    ПЕРЕВІРЕНО на file 1 з coarse.merge_fraction=1/16 (поточне значення за
+    ПЕРЕВІРЕНО на одному записі з coarse.merge_fraction=1/16 (поточне значення за
     замовчуванням у config.py): дає ТОЙ САМИЙ результат (242/242 burst'ів,
     коефіцієнти в межах 0.08 коефіцієнта когерентності), що й повний прохід.
     На решті 4 файлів ще НЕ перевірено - звідси cfg.coarse.enabled=False
