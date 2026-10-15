@@ -14,7 +14,7 @@ import os
 from config import PipelineConfig, apply_overrides
 from health import HealthReport, error
 from io_stage import (load_iq, probe_input, write_bits_bin, write_bits_bin_aligned,
-                      write_bits_bin_phase_aligned, write_bursts)
+                      write_bits_bin_phase_aligned, write_bits_bin_structured, write_bursts)
 from pattern_check import SLOT_BITS
 from memcheck import available_memory_bytes, estimate_memory, format_report, memory_findings
 from pipeline import describe, run
@@ -27,7 +27,7 @@ def main(argv=None):
     ap.add_argument("-o", "--out", metavar="STEM",
                     help="output file stem (STEM.txt, STEM.bin); defaults to input name without extension")
     ap.add_argument("-e", "--endian", type=str.upper, choices=["LE", "BE"], default="LE",
-                    help="bit order when packing bits into bytes of .bin/.bin2/.bin3: "
+                    help="bit order when packing bits into bytes of .bin/.bin2/.bin3/.bin4: "
                          "LE = first bit in the least significant bit (default), BE = in the most significant")
     ap.add_argument("--set", action="append", default=[], metavar="group.name=value",
                     help="override a parameter, e.g. search.on_db=10")
@@ -118,8 +118,10 @@ def main(argv=None):
         write_bits_bin_aligned(stem + ".bin2", res.bursts, SLOT_BITS, bitorder)
         write_bits_bin_phase_aligned(stem + ".bin3", res.bursts, SLOT_BITS,
                                      cfg.front.work_fs_hz, cfg.front.symbol_rate_hz, bitorder)
-        artefacts += [stem + ".txt", stem + ".bin", stem + ".bin2", stem + ".bin3"]
-        print(f"-> {stem}.txt, {stem}.bin, {stem}.bin2, {stem}.bin3")
+        n_rows4, n_unanchored = write_bits_bin_structured(stem + ".bin4", res.bursts, bitorder)
+        artefacts += [stem + ".txt", stem + ".bin", stem + ".bin2", stem + ".bin3", stem + ".bin4"]
+        print(f"-> {stem}.txt, {stem}.bin, {stem}.bin2, {stem}.bin3, {stem}.bin4")
+        print(f".bin4: {n_rows4} slots, {n_unanchored} burst(s) without a training sequence (default start offset)")
     if a.plot and res.search is not None:
         import matplotlib.pyplot as plt
         import numpy as np
