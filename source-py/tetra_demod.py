@@ -26,9 +26,9 @@ def main(argv=None):
     ap.add_argument("--fs", type=float, help="sample rate for raw .cs16")
     ap.add_argument("-o", "--out", metavar="STEM",
                     help="output file stem (STEM.txt, STEM.bin); defaults to input name without extension")
-    ap.add_argument("-e", "--endian", type=str.upper, choices=["LE", "BE"], default="LE",
+    ap.add_argument("-e", "--endian", type=str.upper, choices=["LE", "BE"], default="BE",
                     help="bit order when packing bits into bytes of .bin/.bin2/.bin3/.bin4 (the unpacked .bits/.bits2/.bits3/.bits4, one bit per byte, are not affected): "
-                         "LE = first bit in the least significant bit (default), BE = in the most significant")
+                         "BE = first bit in the most significant bit (default), LE = in the least significant")
     ap.add_argument("--set", action="append", default=[], metavar="group.name=value",
                     help="override a parameter, e.g. search.on_db=10")
     ap.add_argument("--print-config", action="store_true")
