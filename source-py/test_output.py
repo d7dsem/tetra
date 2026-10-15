@@ -8,10 +8,46 @@ from types import SimpleNamespace
 import numpy as np
 from scipy.io import wavfile
 
-from io_stage import write_bits_bin, write_bits_bin_aligned, write_bits_bin_phase_aligned
+from io_stage import write_bits_bin, write_bits_bin_aligned, write_bits_bin_phase_aligned, write_bursts
 from synth import make_signal
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+class TestWriteBursts(unittest.TestCase):
+    def _burst(self, start, bits, flags="-"):
+        return SimpleNamespace(t_start_s=start / 72000, start=start, n_sym=len(bits) // 2,
+                               end=start + 100, snr_db=12.3456, freq_hz=-5.55, coherence=0.9,
+                               phase_rms_deg=3.21, flags=flags, bits=bits)
+
+    def _lines(self, bursts):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.txt")
+            write_bursts(p, bursts)
+            return open(p).read().splitlines()
+
+    def test_header_count_patterns_and_columns(self):
+        lines = self._lines([self._burst(5, [1, 0]), self._burst(123456789, [1, 1, 0, 0])])
+        head = [l for l in lines if l.startswith("#")]
+        self.assertIn("# bursts: 2", head)
+        self.assertTrue(any(l.startswith("#   NTS1 (22) 1101000011101001110100") for l in head))
+        self.assertIn("bits", head[-1])
+        self.assertEqual(len(lines) - len(head), 2)
+
+    def test_pattern_counts_header_aligned_with_rows(self):
+        lines = self._lines([self._burst(5, [1, 0])])
+        pats = [l for l in lines if l.startswith("#   ")]
+        self.assertTrue(lines[0].startswith("# known TETRA"))
+        self.assertEqual({len(l) for l in pats + lines[:1]}, {len(pats[0])})
+
+    def test_bits_start_at_same_column(self):
+        lines = self._lines([self._burst(5, [1, 0]), self._burst(123456789, [1, 1, 0, 0], "LOWCOH,NEARLIM")])
+        col = len(lines[-1]) - len("1100")
+        self.assertEqual(len(lines[-2]) - len("10"), col)
+        self.assertEqual(lines[-3].rindex("bits"), col)
+
+    def test_empty(self):
+        self.assertIn("# bursts: 0", self._lines([]))
 
 
 class TestBitsBin(unittest.TestCase):
@@ -172,7 +208,7 @@ class TestCliOutputNames(unittest.TestCase):
     def test_bin_matches_txt_bits(self):
         with tempfile.TemporaryDirectory() as d:
             self._run(d)
-            txt = [l.split()[-1] for l in open(os.path.join(d, "rec.txt"))]
+            txt = [l.split()[-1] for l in open(os.path.join(d, "rec.txt")) if not l.startswith("#")]
             bits = np.array(list("".join(txt)), dtype=np.uint8)
             got = np.unpackbits(np.frombuffer(open(os.path.join(d, "rec.bin"), "rb").read(),
                                               np.uint8), bitorder="little")[:len(bits)]

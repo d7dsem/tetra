@@ -341,11 +341,12 @@ class TestCli(unittest.TestCase):
         # NO_PATTERNS_FOUND дає "degraded" -> exit 1 за --strict (див. test_clean_run_is_ok).
         self.assertEqual(self.cli(self.tetra, "--strict"), 1)
         with open(self.out) as fh:
-            first = fh.readline().split()
-        # t_start_s start_sample n_sym n_samples snr_db freq_hz coherence phase_rms_deg flags bits
-        self.assertEqual(len(first), 10)
-        self.assertEqual(first[8], "-")
-        self.assertTrue(set(first[9]) <= {"0", "1"})
+            first = next(l for l in fh if not l.startswith("#")).split()
+        # t_start_s start_sample n_samples n_bits n_sym snr_db freq_hz coherence phase_rms_deg flags bits
+        self.assertEqual(len(first), 11)
+        self.assertEqual(first[9], "-")
+        self.assertEqual(int(first[3]), len(first[10]))
+        self.assertTrue(set(first[10]) <= {"0", "1"})
 
     def test_report_json_and_diagnose_only(self):
         rep = os.path.join(self.d, "rep.json")
