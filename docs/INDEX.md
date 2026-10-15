@@ -78,7 +78,7 @@ IQ (.wav 2ch int16 / .cs16)
 `snr_estimate.py` - часовий метод на сирому масиві (потужність burst'а проти шуму у вільних від burst'ів вікнах; використовується в пайплайні). `snr_freq.py` - частотний метод (FFT), у пайплайн не входить.
 
 ### Пошук полів TETRA в бітах і тип burst'а
-`source-py/pattern_check.py`: FCF, NTS1-3, STS, ETS, TAIL (ETSI EN 300 392-2, 9.4.4.3); поріг збігу `DETECT_THRESHOLD`=0.10; `SLOT_BITS`=510; `summarize_recording` - лічильники для заголовка out.txt. Виклик: `checks.check_patterns`. Тип burst'а за стандартом (колонка `type` в out.txt): `classify_burst` + `BURST_LAYOUTS` (розкладки DMO і TMO з усіма відомими бітами).
+`source-py/pattern_check.py`: FCF, NTS1-3, STS, ETS, TAIL (ETSI EN 300 392-2, 9.4.4.3); поріг збігу `DETECT_THRESHOLD`=0.10; `SLOT_BITS`=510; `summarize_recording` - лічильники для заголовка out.txt. Виклик: `checks.check_patterns`. Тип burst'а за стандартом (колонка `type` в out.txt): `classify_burst` + `BURST_LAYOUTS` (розкладки DMO і TMO з усіма відомими бітами); опис кожної розкладки - `docs/burst-structures.md`.
 
 ### Діагностика (Health)
 `health.py`: `Finding`, `CheckResult`, `HealthReport` (статус ok/degraded/failed), всі коди - у `checks.py` і `memcheck.py`. Пороги - `HEALTH_*` у `config.py`.
@@ -126,6 +126,7 @@ IQ (.wav 2ch int16 / .cs16)
 |---|---|
 | `README.md` | короткий опис, структура, запуск |
 | `docs/tetra-demod-internals.md` | когерентність, `#`-рядки out.txt, збірка .bin/.bin2/.bin3/.bin4, колонка `type` |
+| `docs/burst-structures.md` | розкладки полів кожного типу burst'а (DMO і TMO), відомі послідовності, посилання на пункти стандарту, відповідність `type` і колонок `.bin4` |
 | `docs/env-prepare-tetra.md` | оточення Debian |
 | `docs/to-do.md` | плани й нотатки |
 | `docs/cheat-shit.md` | робочі нотатки власника - **не читати** без вказівки |

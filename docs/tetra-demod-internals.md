@@ -37,7 +37,7 @@
 | `NUB1`, `NUB2` | TMO normal uplink burst (462) | табл. 9.5 | NTS1/NTS2 на 220, tail 1100 |
 | `CB` | TMO control uplink burst (206) | табл. 9.3 | ETS на 88, tail 1100 |
 
-Зсуви - 0-based від першого біта burst'а (BN-1 з таблиць). Різницю TMO і DMO дають преамбули
+Зсуви - 0-based від першого біта burst'а (BN-1 з таблиць). Діаграми полів кожного типу - `docs/burst-structures.md`. Різницю TMO і DMO дають преамбули
 й tail (у DMO tail 00, преамбули P1-P3; у TMO tail 1100 і частини NTS3), а не самі
 навчальні послідовності. Лінеаризаційні burst'и (DLB, LB, LDB) не містять бітів і не
 класифікуються. Тип лише за послідовностями знайдено також в osmo-tetra (`tetra_burst.c`),
