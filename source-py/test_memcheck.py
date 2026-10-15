@@ -84,10 +84,10 @@ class TestEstimate(unittest.TestCase):
 
     def test_report_mentions_verdict(self):
         e = estimate_memory(int(WORK * 3600), WORK, CFG, (500 * 10 ** 6, "test"))
-        self.assertIn("НІ", format_report(e))
-        self.assertIn("Доступно: 500 МБ", format_report(e))
+        self.assertIn("NO", format_report(e))
+        self.assertIn("Available: 500 MB", format_report(e))
         e = estimate_memory(int(WORK * 3600), WORK, CFG)
-        self.assertIn("пропущено", format_report(e))
+        self.assertIn("skipped", format_report(e))
 
 
 class TestInput(unittest.TestCase):

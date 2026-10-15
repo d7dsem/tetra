@@ -110,14 +110,14 @@ class HealthReport:
 
     def format_text(self, with_metrics: bool = True) -> str:
         c = self.counts()
-        L = [f"СТАТУС: {self.status}  (ERROR={c['ERROR']} WARN={c['WARN']} INFO={c['INFO']})"]
+        L = [f"STATUS: {self.status}  (ERROR={c['ERROR']} WARN={c['WARN']} INFO={c['INFO']})"]
         for f in sorted(self.findings, key=lambda f: -f.severity):
             L.append(f"  [{f.severity.name}] {f.stage}/{f.code}: {f.message}")
         if with_metrics and self.metrics:
             shown = {k: v for k, v in self.metrics.items()
                     if k.split("_", 1)[0] not in self._METRIC_GROUPS_SHOWN_ELSEWHERE}
             if shown:
-                L.append("Метрики (виміряно з даних):")
+                L.append("Metrics (measured from data):")
                 key_w = max(len(k) for k in shown)
                 for k, v in shown.items():
                     val = f"{v:.4g}" if isinstance(v, float) else f"{v}"

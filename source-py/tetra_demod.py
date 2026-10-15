@@ -1,10 +1,10 @@
 """
-Запуск:  tetra_demod in.wav -o stem      (-> stem.txt, stem.bin; без -o: <in>.txt, <in>.bin)
-         tetra_demod in.cs16 --fs 192000 --set search.on_db=10
-         tetra_demod in.wav --diagnose-only --report health.json
-         tetra_demod --print-config
+Usage:  tetra_demod in.wav -o stem      (-> stem.txt, stem.bin; without -o: <in>.txt, <in>.bin)
+        tetra_demod in.cs16 --fs 192000 --set search.on_db=10
+        tetra_demod in.wav --diagnose-only --report health.json
+        tetra_demod --print-config
 
-Коди виходу: 0 ok/degraded, 1 degraded за --strict, 2 failed (є ERROR).
+Exit codes: 0 ok/degraded, 1 degraded with --strict, 2 failed (has ERROR).
 """
 import argparse
 import dataclasses
@@ -23,17 +23,17 @@ from pipeline import describe, run
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="tetra_demod")
     ap.add_argument("infile", nargs="?")
-    ap.add_argument("--fs", type=float, help="sample rate для raw .cs16")
+    ap.add_argument("--fs", type=float, help="sample rate for raw .cs16")
     ap.add_argument("-o", "--out", metavar="STEM",
-                    help="stem вихідних файлів (STEM.txt, STEM.bin); за замовчуванням ім'я входу без розширення")
+                    help="output file stem (STEM.txt, STEM.bin); defaults to input name without extension")
     ap.add_argument("--set", action="append", default=[], metavar="group.name=value",
-                    help="перевизначити параметр, напр. search.on_db=10")
+                    help="override a parameter, e.g. search.on_db=10")
     ap.add_argument("--print-config", action="store_true")
-    ap.add_argument("--mem-only", action="store_true", help="лише оцінка пам'яті, без обробки")
+    ap.add_argument("--mem-only", action="store_true", help="only estimate memory, no processing")
     ap.add_argument("--diagnose-only", action="store_true",
-                    help="повний аналіз і звіт, без запису burst'ів")
-    ap.add_argument("--report", metavar="FILE.json", help="зберегти звіт здоров'я у JSON")
-    ap.add_argument("--strict", action="store_true", help="код виходу 1, якщо статус degraded")
+                    help="full analysis and report, without writing bursts")
+    ap.add_argument("--report", metavar="FILE.json", help="save health report as JSON")
+    ap.add_argument("--strict", action="store_true", help="exit code 1 if status is degraded")
     ap.add_argument("--plot", action="store_true")
     a = ap.parse_args(argv)
 
@@ -42,7 +42,7 @@ def main(argv=None):
         print(json.dumps(dataclasses.asdict(cfg), indent=2))
         return 0
     if not a.infile:
-        ap.error("потрібен вхідний файл")
+        ap.error("input file required")
 
     h = HealthReport()
     artefacts = []
@@ -55,18 +55,18 @@ def main(argv=None):
                 print(f"    {os.path.abspath(p)}  {os.path.getsize(p)} B")
         m = h.metrics
         if "pattern_n_bursts" in m:
-            print("[ЗВЕДЕННЯ]")
-            print(f"    burst'ів:          {m['pattern_n_bursts']}")
-            print(f"    символів (сума):   {m['pattern_n_symbols_total']}")
+            print("[SUMMARY]")
+            print(f"    bursts:            {m['pattern_n_bursts']}")
+            print(f"    symbols (total):   {m['pattern_n_symbols_total']}")
             det = f"{m['pattern_n_any_detected']}/{m['pattern_n_bursts']} ({m['pattern_detect_fraction']:.1%})"
-            print(f"    хоч щось знайдено: {det}")
+            print(f"    any field found:   {det}")
             thr = m['pattern_threshold']
-            print(f"    поріг помилок:     {thr:.0%}  (тюнінг: pattern_check.DETECT_THRESHOLD)")
-            print("    по полях (ETSI EN 300 392-2, розділ 9.4.4.3):")
+            print(f"    error threshold:   {thr:.0%}  (tuning: pattern_check.DETECT_THRESHOLD)")
+            print("    by field (ETSI EN 300 392-2, section 9.4.4.3):")
             from pattern_check import KNOWN_FIELDS
-            NAME_W = 14   # >= найдовшого підпису "NTS1 (22bit)" (12) + запас
-            print(f"      {'назва':<{NAME_W}}{'перевірено':>12}{'чисто (0%)':>13}"
-                 f"{f'з пом. (≤{thr:.0%})':>15}{'медіана пом.':>14}")
+            NAME_W = 14   # >= longest label "NTS1 (22bit)" (12) + margin
+            print(f"      {'name':<{NAME_W}}{'checked':>12}{'exact (0%)':>13}"
+                 f"{f'w/ err (<={thr:.0%})':>17}{'median err':>13}")
             for name in ("FCF", "NTS1", "NTS2", "NTS3", "STS", "ETS", "TAIL", "PHASE"):
                 status = m.get(f"pattern_{name}_status")
                 if status is None:
@@ -74,14 +74,14 @@ def main(argv=None):
                 pattern, _, _ = KNOWN_FIELDS[name]
                 label = f"{name} ({len(pattern)}bit)" if pattern is not None else f"{name} (?bit)"
                 if status != "ok":
-                    print(f"      {label:<{NAME_W}} не фіксована послідовність (обчислюється динамічно)")
+                    print(f"      {label:<{NAME_W}} not a fixed sequence (computed dynamically)")
                     continue
                 checked = m.get(f"pattern_{name}_checked", 0)
                 exact = m.get(f"pattern_{name}_exact", 0)
                 within = m.get(f"pattern_{name}_within_threshold", 0)
                 err = m.get(f"pattern_{name}_median_err")
                 err_s = f"{err:.1%}" if err is not None else "-"
-                print(f"      {label:<{NAME_W}}{checked:>12}{exact:>13}{within:>15}{err_s:>14}")
+                print(f"      {label:<{NAME_W}}{checked:>12}{exact:>13}{within:>17}{err_s:>13}")
         if a.report:
             h.to_json(a.report)
         return h.exit_code(a.strict)
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     try:
         code = main()
         sys.stdout.flush()
-    except BrokenPipeError:      # напр. `... | head`: тихо завершитись без traceback
+    except BrokenPipeError:      # e.g. `... | head`: exit quietly without a traceback
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         code = 0
     raise SystemExit(code)

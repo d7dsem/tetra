@@ -81,8 +81,8 @@ def _peak(n_in: float, fs: float, cfg: PipelineConfig):
     stages = {}
     if resampled:
         stages["resample"] = x + m.b_resample_pad * n_in + m.b_per_work_sample_buf * n_w
-    stages["matched_filter+пошук"] = x + xw + m.b_per_work_sample_peak * n_w
-    stages["burst'и (результати)"] = x + m.b_resident_per_work_sample * n_w + bursts
+    stages["matched_filter+search"] = x + xw + m.b_per_work_sample_peak * n_w
+    stages["bursts (results)"] = x + m.b_resident_per_work_sample * n_w + bursts
     name = max(stages, key=stages.get)
     return stages, name, m.runtime_overhead_mb * MB + stages[name], resampled, int(n_w)
 
@@ -109,16 +109,16 @@ def estimate_memory(n_in: int, fs: float, cfg: PipelineConfig,
 
 
 def format_report(e: MemoryEstimate) -> str:
-    L = [f"Вхід: {e.duration_s:.1f} с, {e.n_in/1e6:.2f} М відліків @ {e.fs:.0f} Гц"
-         f"{' (потрібен ресемплінг)' if e.resampled else ''}",
-         f"Оцінка піку: {e.peak_bytes/MB:.0f} МБ, з запасом: {e.required_bytes/MB:.0f} МБ"
-         f"  (вузьке місце: {e.bottleneck})"]
+    L = [f"Input: {e.duration_s:.1f} s, {e.n_in/1e6:.2f} M samples @ {e.fs:.0f} Hz"
+         f"{' (resampling required)' if e.resampled else ''}",
+         f"Peak estimate: {e.peak_bytes/MB:.0f} MB, with margin: {e.required_bytes/MB:.0f} MB"
+         f"  (bottleneck: {e.bottleneck})"]
     if e.available_bytes is None:
-        L.append("Доступну пам'ять визначити не вдалося, перевірку пропущено.")
+        L.append("Could not determine available memory, check skipped.")
     else:
-        L.append(f"Доступно: {e.available_bytes/MB:.0f} МБ ({e.source})")
-        L.append("Вистачає: " + ("так" if e.ok else
-                 f"НІ. Макс. тривалість запису за цих параметрів ≈ {e.max_duration_s:.0f} с"))
+        L.append(f"Available: {e.available_bytes/MB:.0f} MB ({e.source})")
+        L.append("Sufficient: " + ("yes" if e.ok else
+                 f"NO. Max recording duration at these settings ~= {e.max_duration_s:.0f} s"))
     return "\n".join(L)
 
 
@@ -127,17 +127,17 @@ def memory_findings(e: MemoryEstimate, cfg: PipelineConfig, mem_only: bool = Fal
     r = CheckResult()
     r.metrics.update(mem_required_mb=e.required_bytes / MB)
     if e.available_bytes is None:
-        r.add(info("memory", "MEM_UNKNOWN", "доступну пам'ять визначити не вдалося, перевірку пропущено"))
+        r.add(info("memory", "MEM_UNKNOWN", "could not determine available memory, check skipped"))
         return r
     r.metrics["mem_available_mb"] = e.available_bytes / MB
     if e.ok:
         return r
-    msg = (f"потрібно ≈{e.required_bytes / MB:.0f} МБ, доступно {e.available_bytes / MB:.0f} МБ ({e.source}); "
-           f"макс. тривалість запису ≈{e.max_duration_s:.0f} с")
+    msg = (f"required ~={e.required_bytes / MB:.0f} MB, available {e.available_bytes / MB:.0f} MB ({e.source}); "
+           f"max recording duration ~={e.max_duration_s:.0f} s")
     if cfg.memory.policy == "abort" or mem_only:
-        r.add(error("memory", "MEM_INSUFFICIENT", msg + ". Скоротіть запис або memory.policy=warn",
+        r.add(error("memory", "MEM_INSUFFICIENT", msg + ". Shorten the recording or set memory.policy=warn",
                     e.required_bytes / MB, e.available_bytes / MB, fatal=cfg.memory.policy == "abort"))
     else:
-        r.add(warn("memory", "MEM_INSUFFICIENT", msg + " (policy=warn, продовжую)",
+        r.add(warn("memory", "MEM_INSUFFICIENT", msg + " (policy=warn, continuing)",
                    e.required_bytes / MB, e.available_bytes / MB))
     return r
