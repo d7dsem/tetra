@@ -203,7 +203,7 @@ class TestCliOutputNames(unittest.TestCase):
             txt = [l.split()[-1] for l in open(os.path.join(d, "rec.txt")) if not l.startswith("#")]
             bits = np.array(list("".join(txt)), dtype=np.uint8)
             got = np.unpackbits(np.frombuffer(open(os.path.join(d, "rec.bin"), "rb").read(),
-                                              np.uint8), bitorder="little")[:len(bits)]
+                                              np.uint8), bitorder="big")[:len(bits)]   # -e за замовчуванням BE
             self.assertTrue(len(txt) > 0 and (got == bits).all())
 
 
