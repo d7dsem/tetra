@@ -26,7 +26,7 @@
 IQ (.wav 2ch int16 / .cs16)
   -> bin/tetra_demod  (source-py/tetra_demod.py -> pipeline.run)
        -> out.txt   (burst'и + статистика)
-       -> out.bin   (потік бітів для декодерів)   .bin2/.bin3 - лише для перегляду
+       -> out.bin   (потік бітів для декодерів)   .bin2/.bin3/.bin4 - лише для перегляду
   -> source-py/wav-proc/tetra_prep.py   (запис 25 кГц для osmo tetra-rx)
   -> source-py/tetra_bits_export.py     (біти burst'ів у форматі tetra-rx: 1 біт = 1 байт)
   -> dmo/dmo_rx  (читає файл бітів, 1 біт/байт; DMO)
@@ -87,7 +87,7 @@ IQ (.wav 2ch int16 / .cs16)
 `memcheck.py`: `estimate_memory` оцінює RAM ДО завантаження файлу; `--mem-only` у CLI.
 
 ### Вхід/вихід
-`source-py/io_stage.py`: `load_iq`/`probe_input` (WAV, raw `.cs16`), `write_bursts` (out.txt), `write_bits_bin`, `write_bits_bin_aligned` (.bin2), `write_bits_bin_phase_aligned` (.bin3). Формат out.txt, `#`-рядки, збірка .bin* - `docs/tetra-demod-internals.md`.
+`source-py/io_stage.py`: `load_iq`/`probe_input` (WAV, raw `.cs16`), `write_bursts` (out.txt), `write_bits_bin`, `write_bits_bin_aligned` (.bin2), `write_bits_bin_phase_aligned` (.bin3), `write_bits_bin_structured` (.bin4: слот на burst за навчальною послідовністю, поля в колонках стандарту; `pattern_check.locate_training`, параметри `BIN4_*` у `config.py`). Формат out.txt, `#`-рядки, збірка .bin* - `docs/tetra-demod-internals.md`.
 
 ### CLI
 `source-py/tetra_demod.py` (`main`): аргументи `-o`, `-e LE|BE`, `--fs`, `--set`, `--print-config`, `--mem-only`, `--diagnose-only`, `--report`, `--strict`, `--plot`. Коди виходу: 0 ok/degraded, 1 degraded з `--strict`, 2 failed. Обгортка: `bin/tetra_demod` (sh, знаходить `source-py/` відносно себе).
@@ -125,7 +125,7 @@ IQ (.wav 2ch int16 / .cs16)
 | Файл | Зміст |
 |---|---|
 | `README.md` | короткий опис, структура, запуск |
-| `docs/tetra-demod-internals.md` | когерентність, `#`-рядки out.txt, збірка .bin/.bin2/.bin3 |
+| `docs/tetra-demod-internals.md` | когерентність, `#`-рядки out.txt, збірка .bin/.bin2/.bin3/.bin4, колонка `type` |
 | `docs/env-prepare-tetra.md` | оточення Debian |
 | `docs/to-do.md` | плани й нотатки |
 | `docs/cheat-shit.md` | робочі нотатки власника - **не читати** без вказівки |
