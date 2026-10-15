@@ -121,15 +121,21 @@ scripts/deploy.sh -m release -t dmo_rx        # -> bin/dmo_rx (debug: -m debug -
 
 # запуск: вхід - файл бітів, один біт у байті
 tetra_demod in.wav -o out
-bin/dmo_rx out.bits4
-bin/dmo_rx out.bits4 -v                       # додає перевірку tail
+bin/dmo_rx out.bits4                          # лог + out.out (TCH-записи для кодека)
+bin/dmo_rx out.bits4 -v                       # + сирі біти SCH/S, SCH/H, SCH/F
+bin/dmo_rx out.bits4 -o res                   # артефакт res.out (за замовчуванням ім'я входу + .out)
+
+# голос: .out -> WAV 8 кГц mono (кодек cdecoder/sdecoder з /tetra/bin, як є)
+bin/dmo_voice out.out                         # -> out.wav
+bin/dmo_voice out.out call.wav
 ```
 
-Вихід: рядок на кожен знайдений DSB (зсув, `SCH/S crc=OK|FAIL type1=...`, `SCH/H crc=...`),
-у кінці `candidates=N SCH/S_crc_ok=N SCH/H_crc_ok=N`. Коди виходу: 0, 1 (помилка), 2 (аргументи).
-STS шукається точним збігом, декодуються лише DSB (DNB, тобто голос, ще ні).
+Вихід `dmo_rx`: першими рядками підсумок (`#`: скільки DSB, DNB1, DNB2; CRC OK по SCH/S, SCH/H, SCH/F, STCH;
+колір-код), далі рядок на burst: DSB - `S:OK H:OK slot frame DM-1 cd DM-SETUP src dst mni`, DNB1 - `SCH/F OK`
+або `TCH`, DNB2 - `STCH OK|FAIL`. Останній рядок `-> res.out (N TCH records for cdecoder)`.
+Коди виходу: 0, 1 (помилка), 2 (аргументи).
+`.out` - записи по 690 int16 (формат входу cdecoder, як `tetra-rx -d`); 1 запис = 60 мс мовлення.
 Вимоги до входів - у `README.md`, розділ "Вимоги до входу".
-
 
 # Діагностика
 

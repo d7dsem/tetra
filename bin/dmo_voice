@@ -1,0 +1,16 @@
+#!/bin/sh
+# dmo_voice: TCH-записи з dmo_rx (.out) -> WAV (8 кГц, mono, int16) через ETSI-кодек, встановлений
+# у /tetra/bin (каталог можна змінити змінною TETRA_CODEC_DIR). Кодек викликається як є.
+set -eu
+CODEC_DIR="${TETRA_CODEC_DIR:-/tetra/bin}"
+in="${1:?usage: dmo_voice <traffic.out> [out.wav]}"
+out="${2:-${in%.out}.wav}"
+cat "$in" | "$CODEC_DIR/cdecoder" /dev/stdin /dev/stdout 2>/dev/null | "$CODEC_DIR/sdecoder" /dev/stdin /dev/stdout 2>/dev/null |
+python3 -c '
+import sys, wave
+w = wave.open(sys.argv[1], "wb")
+w.setnchannels(1); w.setsampwidth(2); w.setframerate(8000)
+data = sys.stdin.buffer.read()
+w.writeframes(data)
+w.close()
+print("-> %s (%.1f s)" % (sys.argv[1], len(data) / 2 / 8000))' "$out"

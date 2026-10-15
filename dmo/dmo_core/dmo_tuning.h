@@ -38,10 +38,31 @@ enum {
 	/* RCPC mother code outputs per type-2 bit */
 	DMO_MOTHER_BITS_PER_INPUT = 4,
 
+	/* SCH/F: both blocks of a DNB with one logical channel (also the size of a TCH/S full-slot block) */
+	DMO_SCH_F_CODED_BITS = 432,
+	DMO_SCH_F_TYPE2_BITS = 288,
+	DMO_SCH_F_TYPE1_BITS = 268,
+	DMO_SCH_F_INTERLEAVE_A = 103,
+
+	/* DNB, table 15: preamble, block 1, training sequence, block 2, tail */
+	DMO_PREAMBLE_BITS = 12,
+	DMO_NTS_BITS = 22,
+	DMO_NTS_OFFSET = 230,
+	DMO_DNB_BLK1_OFFSET = 14,
+	DMO_DNB_BLK_BITS = 216,
+	DMO_DNB_BLK2_OFFSET = 252,
+	DMO_TAIL_OFFSET = 468,
+	DMO_TAIL_BITS = 2,
+
+	/* Allowed bit errors when recognising a DNB (STS in a DSB is matched with DMO_STS_MAX_BIT_ERRORS_DEFAULT) */
+	DMO_PREAMBLE_MAX_BIT_ERRORS = 1,
+	DMO_NTS_MAX_BIT_ERRORS = 2,
+	DMO_TAIL_MAX_BIT_ERRORS = 0,
+
 	/* Largest block of each kind, for stack buffers */
-	DMO_MAX_CODED_BITS = DMO_SCH_H_CODED_BITS,
-	DMO_MAX_TYPE2_BITS = DMO_SCH_H_TYPE2_BITS,
-	DMO_MAX_TYPE1_BITS = DMO_SCH_H_TYPE1_BITS
+	DMO_MAX_CODED_BITS = DMO_SCH_F_CODED_BITS,
+	DMO_MAX_TYPE2_BITS = DMO_SCH_F_TYPE2_BITS,
+	DMO_MAX_TYPE1_BITS = DMO_SCH_F_TYPE1_BITS
 };
 
 #endif
