@@ -10,7 +10,7 @@ from scipy.io import wavfile
 
 from io_stage import (write_bits_bin, write_bits_bin_aligned, write_bits_bin_phase_aligned,
                       write_bits_bin_structured, write_bursts)
-from pattern_check import KNOWN_FIELDS
+from pattern_check import BURST_LAYOUT_BY_NAME, KNOWN_FIELDS
 from synth import make_signal
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -128,7 +128,8 @@ class TestBitsBinStructured(unittest.TestCase):
 
     def _burst_470(self, seed=0):
         bits = np.random.default_rng(seed).integers(0, 2, 470).astype(np.uint8)
-        bits[214:252] = [int(c) for c in KNOWN_FIELDS["STS"][0]]
+        for off, pat in BURST_LAYOUT_BY_NAME["DSB"].fields:        # відомі поля DSB: preamble, FCF, STS, tail
+            bits[off:off + len(pat)] = [int(c) for c in pat]
         return bits
 
     def _rows(self, bits_list):

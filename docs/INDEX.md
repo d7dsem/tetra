@@ -77,8 +77,8 @@ IQ (.wav 2ch int16 / .cs16)
 ### SNR
 `snr_estimate.py` - часовий метод на сирому масиві (потужність burst'а проти шуму у вільних від burst'ів вікнах; використовується в пайплайні). `snr_freq.py` - частотний метод (FFT), у пайплайн не входить.
 
-### Пошук полів TETRA в бітах
-`source-py/pattern_check.py`: FCF, NTS1-3, STS, ETS, TAIL (ETSI EN 300 392-2, 9.4.4.3); поріг збігу `DETECT_THRESHOLD`=0.10; `SLOT_BITS`=510; `summarize_recording` - лічильники для заголовка out.txt. Виклик: `checks.check_patterns`.
+### Пошук полів TETRA в бітах і тип burst'а
+`source-py/pattern_check.py`: FCF, NTS1-3, STS, ETS, TAIL (ETSI EN 300 392-2, 9.4.4.3); поріг збігу `DETECT_THRESHOLD`=0.10; `SLOT_BITS`=510; `summarize_recording` - лічильники для заголовка out.txt. Виклик: `checks.check_patterns`. Тип burst'а за стандартом (колонка `type` в out.txt): `classify_burst` + `BURST_LAYOUTS` (розкладки DMO і TMO з усіма відомими бітами).
 
 ### Діагностика (Health)
 `health.py`: `Finding`, `CheckResult`, `HealthReport` (статус ok/degraded/failed), всі коди - у `checks.py` і `memcheck.py`. Пороги - `HEALTH_*` у `config.py`.
@@ -87,7 +87,7 @@ IQ (.wav 2ch int16 / .cs16)
 `memcheck.py`: `estimate_memory` оцінює RAM ДО завантаження файлу; `--mem-only` у CLI.
 
 ### Вхід/вихід
-`source-py/io_stage.py`: `load_iq`/`probe_input` (WAV, raw `.cs16`), `write_bursts` (out.txt), `write_bits_bin`, `write_bits_bin_aligned` (.bin2), `write_bits_bin_phase_aligned` (.bin3), `write_bits_bin_structured` (.bin4: слот на burst за навчальною послідовністю, поля в колонках стандарту; `pattern_check.locate_training`, параметри `BIN4_*` у `config.py`). Формат out.txt, `#`-рядки, збірка .bin* - `docs/tetra-demod-internals.md`.
+`source-py/io_stage.py`: `load_iq`/`probe_input` (WAV, raw `.cs16`), `write_bursts` (out.txt), `write_bits_bin`, `write_bits_bin_aligned` (.bin2), `write_bits_bin_phase_aligned` (.bin3), `write_bits_bin_structured` (.bin4: слот на burst за типом, поля в колонках стандарту; `pattern_check.classify_burst` і `BURST_LAYOUTS`, параметри `CLASSIFY_*`/`BIN4_*` у `config.py`). Формат out.txt, `#`-рядки, збірка .bin* - `docs/tetra-demod-internals.md`.
 
 ### CLI
 `source-py/tetra_demod.py` (`main`): аргументи `-o`, `-e LE|BE`, `--fs`, `--set`, `--print-config`, `--mem-only`, `--diagnose-only`, `--report`, `--strict`, `--plot`. Коди виходу: 0 ok/degraded, 1 degraded з `--strict`, 2 failed. Обгортка: `bin/tetra_demod` (sh, знаходить `source-py/` відносно себе).

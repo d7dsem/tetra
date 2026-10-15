@@ -121,7 +121,7 @@ def main(argv=None):
         n_rows4, n_unanchored = write_bits_bin_structured(stem + ".bin4", res.bursts, bitorder)
         artefacts += [stem + ".txt", stem + ".bin", stem + ".bin2", stem + ".bin3", stem + ".bin4"]
         print(f"-> {stem}.txt, {stem}.bin, {stem}.bin2, {stem}.bin3, {stem}.bin4")
-        print(f".bin4: {n_rows4} slots, {n_unanchored} burst(s) without a training sequence (default start offset)")
+        print(f".bin4: {n_rows4} slots, {n_unanchored} burst(s) of unknown type (default layout and start offset)")
     if a.plot and res.search is not None:
         import matplotlib.pyplot as plt
         import numpy as np
