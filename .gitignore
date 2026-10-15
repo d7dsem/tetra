@@ -10,6 +10,9 @@ venv/
 
 bak/
 
+# ETSI стандарти (PDF, не в репо; див. docs/INDEX.md, розділ "Нормативні документи")
+/docs/ETSI/
+
 # Editors / OS
 .vscode/
 .idea/
