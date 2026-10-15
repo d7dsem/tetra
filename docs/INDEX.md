@@ -129,3 +129,15 @@ IQ (.wav 2ch int16 / .cs16)
 | `docs/env-prepare-tetra.md` | оточення Debian |
 | `docs/to-do.md` | плани й нотатки |
 | `docs/cheat-shit.md` | робочі нотатки власника - **не читати** без вказівки |
+
+## 7. Нормативні документи (не в git)
+
+PDF стандартів лежать у `docs/ETSI/` і додані до `.gitignore`. Якщо їх немає (новий клон), завантажити з etsi.org (пошук за номером на https://www.etsi.org/standards), саме ці версії, бо номери таблиць і клаузул у `dmo/docs/*.md` і в `source-py/pattern_check.py` відповідають їм:
+
+| Документ | Версія | Дата | Для чого |
+|---|---|---|---|
+| ETSI EN 300 392-2 | V3.8.1 | 2016-08 | TMO: air interface, burst'и і навчальні послідовності (9.4.4), `pattern_check.py` |
+| ETSI EN 300 396-2 | V1.4.1 | 2011-12 | DMO: фізичний рівень, DSB/DNB (9.4.3), `dmo/docs/dmo-phy-spec.md` |
+| ETSI EN 300 396-3 | V1.4.1 | 2011-12 | DMO: MAC, DMAC-SYNC (SCH/S, SCH/H), `dmo/docs/dmo-mac-spec.md`; зараз у `docs/ETSI/` відсутній |
+
+Ім'я файлу в `docs/ETSI/`: `ETSI_EN_300_392-2_V3.8.1(2016-08).pdf`, `ETSI_EN_300_396-2 V1.4.1(2011-12).pdf`.
