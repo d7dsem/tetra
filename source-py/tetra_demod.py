@@ -27,7 +27,7 @@ def main(argv=None):
     ap.add_argument("-o", "--out", metavar="STEM",
                     help="output file stem (STEM.txt, STEM.bin); defaults to input name without extension")
     ap.add_argument("-e", "--endian", type=str.upper, choices=["LE", "BE"], default="LE",
-                    help="bit order when packing bits into bytes of .bin/.bin2/.bin3/.bin4: "
+                    help="bit order when packing bits into bytes of .bin/.bin2/.bin3/.bin4 (the unpacked .bits/.bits2/.bits3/.bits4, one bit per byte, are not affected): "
                          "LE = first bit in the least significant bit (default), BE = in the most significant")
     ap.add_argument("--set", action="append", default=[], metavar="group.name=value",
                     help="override a parameter, e.g. search.on_db=10")
@@ -114,13 +114,14 @@ def main(argv=None):
         stem = a.out or os.path.splitext(a.infile)[0]
         write_bursts(stem + ".txt", res.bursts)
         bitorder = {"LE": "little", "BE": "big"}[a.endian]
-        write_bits_bin(stem + ".bin", res.bursts, bitorder)
-        write_bits_bin_aligned(stem + ".bin2", res.bursts, SLOT_BITS, bitorder)
+        write_bits_bin(stem + ".bin", res.bursts, bitorder, stem + ".bits")
+        write_bits_bin_aligned(stem + ".bin2", res.bursts, SLOT_BITS, bitorder, stem + ".bits2")
         write_bits_bin_phase_aligned(stem + ".bin3", res.bursts, SLOT_BITS,
-                                     cfg.front.work_fs_hz, cfg.front.symbol_rate_hz, bitorder)
-        n_rows4, n_unanchored = write_bits_bin_structured(stem + ".bin4", res.bursts, bitorder)
-        artefacts += [stem + ".txt", stem + ".bin", stem + ".bin2", stem + ".bin3", stem + ".bin4"]
-        print(f"-> {stem}.txt, {stem}.bin, {stem}.bin2, {stem}.bin3, {stem}.bin4")
+                                     cfg.front.work_fs_hz, cfg.front.symbol_rate_hz, bitorder, stem + ".bits3")
+        n_rows4, n_unanchored = write_bits_bin_structured(stem + ".bin4", res.bursts, bitorder, stem + ".bits4")
+        names = [".txt", ".bin", ".bin2", ".bin3", ".bin4", ".bits", ".bits2", ".bits3", ".bits4"]
+        artefacts += [stem + n for n in names]
+        print("-> " + ", ".join(stem + n for n in names))
         print(f".bin4: {n_rows4} slots, {n_unanchored} burst(s) of unknown type (default layout and start offset)")
     if a.plot and res.search is not None:
         import matplotlib.pyplot as plt
