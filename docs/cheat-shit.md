@@ -69,6 +69,13 @@ tetra_demod 1_voice_open_rsmp_72e3.wav -o out --plot
 
 NOTE: `-o out` задає STEM, а не повне ім'я. Без `-o` стем = ім'я входу без розширення.
 
+`-e LE|BE` (`--endian`) - порядок бітів при пакуванні в байти `.bin`/`.bin2`/`.bin3`:
+`LE` (за замовчуванням) - перший біт у молодшому розряді байта, `BE` - у старшому.
+
+```bash
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out -e BE
+```
+
 
 # Вихідні файли
 

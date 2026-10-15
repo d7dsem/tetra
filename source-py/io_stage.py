@@ -57,17 +57,19 @@ def write_bursts(path: str, bursts) -> None:
                     f"{''.join(map(str, b.bits))}\n")
 
 
-def write_bits_bin(path: str, bursts) -> None:
-    """Біти всіх burst'ів суцільним потоком; перший біт у молодшому розряді байта.
+def write_bits_bin(path: str, bursts, bitorder: str = "little") -> None:
+    """Біти всіх burst'ів суцільним потоком; bitorder="little" - перший біт у
+    молодшому розряді байта, "big" - у старшому.
     Нулі лише в кінці файлу, до кратності 8 біт; меж burst'ів немає."""
     parts = [np.asarray(b.bits, dtype=np.uint8) for b in bursts]
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
     with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder="little").tobytes())
+        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
 
 
 def write_bits_bin_phase_aligned(path: str, bursts, slot_bits: int,
-                                 sample_rate_hz: float, symbol_rate_hz: float) -> None:
+                                 sample_rate_hz: float, symbol_rate_hz: float,
+                                 bitorder: str = "little") -> None:
     """Те саме призначення, що write_bits_bin_aligned, але ТОЧНІШЕ: кожен burst
     доповнюється нулями З ОБОХ боків так, щоб його перший реальний біт став саме
     на ту позицію всередині 510-бітного періоду, де він БУВ у сирому записі -
@@ -92,10 +94,11 @@ def write_bits_bin_phase_aligned(path: str, bursts, slot_bits: int,
         parts.append(chunk)
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
     with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder="little").tobytes())
+        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
 
 
-def write_bits_bin_aligned(path: str, bursts, slot_bits: int) -> None:
+def write_bits_bin_aligned(path: str, bursts, slot_bits: int,
+                           bitorder: str = "little") -> None:
     """Те саме, що write_bits_bin, але КОЖЕН burst доповнюється нулями до кратності
     slot_bits ПЕРЕД конкатенацією - щоб кожен burst у файлі починався рівно на межі
     510-бітного (ETSI) слота. Призначення: вирівняний перегляд у bit viewer'і з рамкою
@@ -112,4 +115,4 @@ def write_bits_bin_aligned(path: str, bursts, slot_bits: int) -> None:
         parts.append(bits)
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
     with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder="little").tobytes())
+        f.write(np.packbits(stream, bitorder=bitorder).tobytes())

@@ -23,6 +23,14 @@ class TestBitsBin(unittest.TestCase):
             write_bits_bin(p, bursts)
             self.assertEqual(open(p, "rb").read(), bytes([0b00011001]))
 
+    def test_packing_msb_first_when_big(self):
+        bursts = [SimpleNamespace(bits=np.array([1, 0, 0], np.uint8)),
+                  SimpleNamespace(bits=np.array([1, 1], np.uint8))]
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.bin")
+            write_bits_bin(p, bursts, "big")
+            self.assertEqual(open(p, "rb").read(), bytes([0b10011000]))
+
     def test_empty(self):
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, "x.bin")

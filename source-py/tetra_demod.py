@@ -26,6 +26,9 @@ def main(argv=None):
     ap.add_argument("--fs", type=float, help="sample rate for raw .cs16")
     ap.add_argument("-o", "--out", metavar="STEM",
                     help="output file stem (STEM.txt, STEM.bin); defaults to input name without extension")
+    ap.add_argument("-e", "--endian", type=str.upper, choices=["LE", "BE"], default="LE",
+                    help="bit order when packing bits into bytes of .bin/.bin2/.bin3: "
+                         "LE = first bit in the least significant bit (default), BE = in the most significant")
     ap.add_argument("--set", action="append", default=[], metavar="group.name=value",
                     help="override a parameter, e.g. search.on_db=10")
     ap.add_argument("--print-config", action="store_true")
@@ -110,10 +113,11 @@ def main(argv=None):
     if not h.fatal and not a.diagnose_only:
         stem = a.out or os.path.splitext(a.infile)[0]
         write_bursts(stem + ".txt", res.bursts)
-        write_bits_bin(stem + ".bin", res.bursts)
-        write_bits_bin_aligned(stem + ".bin2", res.bursts, SLOT_BITS)
+        bitorder = {"LE": "little", "BE": "big"}[a.endian]
+        write_bits_bin(stem + ".bin", res.bursts, bitorder)
+        write_bits_bin_aligned(stem + ".bin2", res.bursts, SLOT_BITS, bitorder)
         write_bits_bin_phase_aligned(stem + ".bin3", res.bursts, SLOT_BITS,
-                                     cfg.front.work_fs_hz, cfg.front.symbol_rate_hz)
+                                     cfg.front.work_fs_hz, cfg.front.symbol_rate_hz, bitorder)
         artefacts += [stem + ".txt", stem + ".bin", stem + ".bin2", stem + ".bin3"]
         print(f"-> {stem}.txt, {stem}.bin, {stem}.bin2, {stem}.bin3")
     if a.plot and res.search is not None:
