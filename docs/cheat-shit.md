@@ -4,6 +4,46 @@
 
 ШІ - без прямої команди не модифікує. Включає у всі коміти безумвоно, в коміт меседж не вносити. 
 
+# Послідовності, які шукаємо (біти, 0/1)
+
+Джерело: `source-py/pattern_check.py`, ETSI EN 300 392-2 V3.8.1, розділ 9.4.4.3.
+
+```
+FCF   (80)  11111111000000000000000000000000000000000000000000000000000000000000000011111111
+NTS1  (22)  1101000011101001110100
+NTS2  (22)  0111101001000011011110
+NTS3  (22)  1011011100000110101101
+STS   (38)  11000001100111001110100111000001100111
+ETS   (30)  100111010000111010011101000011
+TAIL  (4)   1100
+```
+
+- FCF (Frequency Correction Field) - частотна корекція: 8 одиниць, 64 нулі, 8 одиниць.
+- NTS1/NTS2/NTS3 (Normal Training Sequence 1/2/3) - навчальні послідовності для
+  синхронізації й оцінки каналу; NTS3 - у start/stop та discontinuous sync burst.
+- STS (Synchronization Training Sequence) - навчальна послідовність sync burst'а.
+- ETS (Extended Training Sequence) - довга навчальна послідовність uplink control burst'а.
+- TAIL (tail bits) - 4 біти наприкінці; надто коротке, щоб вважати знайденим саме по собі.
+- PHASE (phase adjustment bits) - не фіксована послідовність, обчислюється для кожного
+  burst'а, тому не шукається.
+
+
+# Приклади, прив'язані до ПК
+
+Запис-приклад: `~/Public/signals/1otd/azart-open/72KHz/1_voice_open_rsmp_72e3.wav`
+(лежить на цьому ПК, у репозиторій не входить). Усі інструменти викликаються за
+іменем: `PATH` і аліаси з `docs/env-prepare-tetra.md`.
+
+```bash
+cd ~/Public/signals/1otd/azart-open/72KHz
+tetra_demod 1_voice_open_rsmp_72e3.wav -o 1_voice_open_rsmp_72e3
+tetra_bits_export 1_voice_open_rsmp_72e3.wav -o 1_voice_open_rsmp_72e3
+tetra-rx 1_voice_open_rsmp_72e3.true.plus.bits | grep -c "found SYNC"   # 12
+mkdir -p /tmp/dump && tetra-rx -d /tmp/dump 1_voice_open_rsmp_72e3.true.plus.bits
+tplay /tmp/dump/*.out       # на цьому записі /tmp/dump порожній: tplay нічого не знайде
+```
+
+
 # Підготовка
 
 ```bash
@@ -15,14 +55,16 @@ cd source-py && python3 -m unittest discover -p "test_*.py" -v   # 129 тест�
 # Запуск
 
 ```bash
+cd ~/Public/signals/1otd/azart-open/72KHz
+
 # з довільного каталогу (bin/ сам знаходить source-py/ відносно себе)
-./bin/tetra_demod in.wav -o out
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out
 
 # raw int16 interleaved I,Q: fs обов'язковий
-./bin/tetra_demod in.cs16 --fs 192000 -o out
+tetra_demod in.cs16 --fs 192000 -o out
 
 # графіки
-./bin/tetra_demod in.wav -o out --plot
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out --plot
 ```
 
 NOTE: `-o out` задає STEM, а не повне ім'я. Без `-o` стем = ім'я входу без розширення.
@@ -66,9 +108,10 @@ t_start_s  start_sample  n_sym  n_samples  snr_db  freq_hz  coherence  phase_rms
 # Діагностика
 
 ```bash
-./bin/tetra_demod in.wav --mem-only                           # лише оцінка пам'яті
-./bin/tetra_demod in.wav --diagnose-only --report health.json # аналіз без запису burst'ів
-./bin/tetra_demod in.wav -o out --strict; echo $?              # 1 якщо degraded
+cd ~/Public/signals/1otd/azart-open/72KHz
+tetra_demod 1_voice_open_rsmp_72e3.wav --mem-only                           # лише оцінка пам'яті
+tetra_demod 1_voice_open_rsmp_72e3.wav --diagnose-only --report health.json # аналіз без запису burst'ів
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out --strict; echo $?              # 1 якщо degraded
 ```
 
 Коди виходу: `0` ok/degraded, `1` degraded за `--strict`, `2` failed (є ERROR).
@@ -118,14 +161,15 @@ V3.8.1, розділ 9.4.4.3** (формули 9.1-9.13) напряму з те�
 # Тюнінг параметрів
 
 ```bash
-./bin/tetra_demod --print-config              # усі поточні значення, JSON
+cd ~/Public/signals/1otd/azart-open/72KHz
+tetra_demod --print-config              # усі поточні значення, JSON
 
 # пошук burst'ів
-./bin/tetra_demod in.wav -o out --set search.on_db=10
-./bin/tetra_demod in.wav -o out --set search.noise_mode=fixed --set search.noise_fixed=0.001
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out --set search.on_db=10
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out --set search.noise_mode=fixed --set search.noise_fixed=0.001
 
 # відсіяти слабкі burst'и
-./bin/tetra_demod in.wav -o out --set quality.min_coherence=0.5
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out --set quality.min_coherence=0.5
 
 # поріг пошуку полів TETRA - НЕ підключений через --set, лише в коді:
 #   source-py/pattern_check.py, DETECT_THRESHOLD (10% за замовчуванням)
@@ -134,7 +178,8 @@ V3.8.1, розділ 9.4.4.3** (формули 9.1-9.13) напряму з те�
 ## Груба детекція (coarse_detect) - ЕКСПЕРИМЕНТАЛЬНО, вимкнена за замовчуванням
 
 ```bash
-./bin/tetra_demod in.wav -o out --set coarse.enabled=true
+cd ~/Public/signals/1otd/azart-open/72KHz
+tetra_demod 1_voice_open_rsmp_72e3.wav -o out --set coarse.enabled=true
 ```
 
 Альтернативний шлях: груба детекція активних ділянок ДО matched filter (на
