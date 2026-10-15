@@ -22,3 +22,11 @@ bak/
 *.cs8
 *.cfile
 *.wav
+
+# C
+/build*/
+/wd/
+compile_commands.json
+*.o
+*.a
+/bin/dmo_rx
