@@ -20,7 +20,8 @@ TAIL  (4)   1100
 
 - FCF (Frequency Correction Field) - частотна корекція: 8 одиниць, 64 нулі, 8 одиниць.
 - NTS1/NTS2/NTS3 (Normal Training Sequence 1/2/3) - навчальні послідовності для
-  синхронізації й оцінки каналу; NTS3 - у start/stop та discontinuous sync burst.
+  синхронізації й оцінки каналу; NTS3 - допоміжна, частинами по краях downlink burst'ів
+  (q11..q22 на початку, q1..q10 в кінці); розкладки burst'ів - `docs/burst-structures.md`.
 - STS (Synchronization Training Sequence) - навчальна послідовність sync burst'а.
 - ETS (Extended Training Sequence) - довга навчальна послідовність uplink control burst'а.
 - TAIL (tail bits) - 4 біти наприкінці; надто коротке, щоб вважати знайденим саме по собі.
@@ -55,7 +56,7 @@ tplay /tmp/dump/*.out       # на цьому записі /tmp/dump порож�
 ```bash
 cd /шлях/до/репо
 chmod +x bin/tetra_demod            # один раз
-cd source-py && python3 -m unittest discover -p "test_*.py" -v   # 129 тестів
+cd source-py && python3 -m unittest discover -p "test_*.py" -v
 ```
 
 # Запуск
@@ -75,8 +76,8 @@ tetra_demod 1_voice_open_rsmp_72e3.wav -o out --plot
 
 NOTE: `-o out` задає STEM, а не повне ім'я. Без `-o` стем = ім'я входу без розширення.
 
-`-e LE|BE` (`--endian`) - порядок бітів при пакуванні в байти `.bin`/`.bin2`/`.bin3`:
-`LE` (за замовчуванням) - перший біт у молодшому розряді байта, `BE` - у старшому.
+`-e LE|BE` (`--endian`) - порядок бітів при пакуванні в байти `.bin`/`.bin2`/`.bin3`/`.bin4`:
+`BE` (за замовчуванням) - перший біт у старшому розряді байта, `LE` - у молодшому.
 
 ```bash
 tetra_demod 1_voice_open_rsmp_72e3.wav -o out -e BE
@@ -159,7 +160,7 @@ tetra_demod 1_voice_open_rsmp_72e3.wav -o out --strict; echo $?              # 1
 | BURST_EXCEPTION, STAGE_EXCEPTION | виняток усередині етапу (`--set health.reraise=true` покаже traceback) |
 
 
-# [ЗВЕДЕННЯ]: пошук полів TETRA
+# [SUMMARY]: пошук полів TETRA
 
 Блок у виводі одразу після `[ARTEFACTS]`. Поля звірені з **ETSI EN 300 392-2
 V3.8.1, розділ 9.4.4.3** (формули 9.1-9.13) напряму з текстом стандарту.
@@ -225,16 +226,17 @@ NOTE: перевірено на 5 файлах з `coarse.merge_fraction=1/16` (
 
 # Обмеження (щоб не забути)
 
-- Немає кореляції зі sync/training-послідовностями для КАДРУВАННЯ (дескремблювання,
-  деперемеження, FEC/Viterbi) - на виході "сирі" біти burst'ів, не декодовані PDU.
+- `tetra_demod` не робить канального декодування (дескремблювання, деперемеження, FEC/Viterbi): на виході
+  "сирі" біти burst'ів. Для DSB (DMO) це робить `dmo_rx` (SCH/S, SCH/H з CRC); DNB (голос) ще не декодується.
 - Для голосу (ACELP) потрібен окремий відкритий ланцюжок: osmo-tetra-sq5bpf +
   telive + install-tetra-codec (завантажує референсний кодек з сайту ETSI,
   під їхньою ліцензією) - не інтегровано в цей проєкт.
 - Тести лише на синтетиці (`synth.py`, генерує ВИПАДКОВІ біти - тому
-  NO_PATTERNS_FOUND на них коректний, не помилка) і на 5 реальних файлах.
+  NO_PATTERNS_FOUND на них коректний, не помилка); тестів на реальних записах немає.
 - `tetra-rx` (osmo-tetra) розрахований на конкретний трафік - мережевий режим TETRA (TMO)
   від базової станції. У його коді немає жодної згадки DMO (`dmo`, `direct mode`, `dm-sync`).
-  На наших записах (az2, 1_mask_voice, 2_mask_voice) 37 синхро-burst'ів проходять CRC, але
-  MCC/MNC/CC = 0 і біти з 26-го в BSCH усі нулі: можливо DMO, НЕ підтверджено (потрібен EN 300 396-2).
+  Підтверджено, що записи 1_mask_voice - DMO: `dmo_rx` декодує DSB за DMO-ланцюгом (CRC OK), system code `1100`,
+  преамбули P1-P3 і tail `00` в усіх burst'ах (TMO мав би tail `1100`). Раніша гіпотеза про TMO з нулями MCC/MNC/CC
+  у BSCH була хибним тлумаченням DMO-блоку.
 - Тонкий зсув частоти однозначний лише в межах ±2250 Гц (symbol_rate/8).
 - Файл завантажується в пам'ять повністю (потокової обробки блоками немає).
