@@ -4,6 +4,8 @@
   load_iq()      файл -> (fs, complex64 IQ)   WAV int16 2ch або raw .cs16 (+fs)
   write_bursts() burst'и -> текстовий файл
   write_bits_bin() біти burst'ів підряд -> бінарний файл (2 біти на символ)
+  (кожен write_bits_bin* може додатково писати bits_path: ті самі біти, один біт у байті, без
+   упаковки - вхід dmo_rx; порядок бітів у байті там не застосовується)
   write_bits_bin_aligned() те саме, але з доповненням нулями до межі слота (510 біт)
                           перед кожним burst'ом - для перегляду в bit viewer'і з рамкою
   write_bits_bin_phase_aligned() точніше: burst доповнюється нулями З ОБОХ боків
@@ -99,19 +101,30 @@ def write_bursts(path: str, bursts) -> None:
             f.write(fmt(r) + "\n")
 
 
-def write_bits_bin(path: str, bursts, bitorder: str = "little") -> None:
+def _write_stream(stream, path: str, bitorder: str, bits_path=None) -> None:
+    """Пише біти двома способами: path - упаковано по 8 біт у байт (порядок у байті - bitorder,
+    "little"/"big"), bits_path (якщо задано) - БЕЗ упаковки, один біт у байті (0/1) у порядку
+    передачі, довжина точно len(stream); порядок бітів у байті там не має значення. Другий
+    формат - вхід dmo_rx."""
+    with open(path, "wb") as f:
+        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+    if bits_path:
+        with open(bits_path, "wb") as f:
+            f.write(stream.tobytes())
+
+
+def write_bits_bin(path: str, bursts, bitorder: str = "little", bits_path=None) -> None:
     """Біти всіх burst'ів суцільним потоком; bitorder="little" - перший біт у
     молодшому розряді байта, "big" - у старшому.
     Нулі лише в кінці файлу, до кратності 8 біт; меж burst'ів немає."""
     parts = [np.asarray(b.bits, dtype=np.uint8) for b in bursts]
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
-    with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+    _write_stream(stream, path, bitorder, bits_path)
 
 
 def write_bits_bin_phase_aligned(path: str, bursts, slot_bits: int,
                                  sample_rate_hz: float, symbol_rate_hz: float,
-                                 bitorder: str = "little") -> None:
+                                 bitorder: str = "little", bits_path=None) -> None:
     """Те саме призначення, що write_bits_bin_aligned, але ТОЧНІШЕ: кожен burst
     доповнюється нулями З ОБОХ боків так, щоб його перший реальний біт став саме
     на ту позицію всередині 510-бітного періоду, де він БУВ у сирому записі -
@@ -135,12 +148,11 @@ def write_bits_bin_phase_aligned(path: str, bursts, slot_bits: int,
         chunk[phase:phase + len(bits)] = bits
         parts.append(chunk)
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
-    with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+    _write_stream(stream, path, bitorder, bits_path)
 
 
 def write_bits_bin_aligned(path: str, bursts, slot_bits: int,
-                           bitorder: str = "little") -> None:
+                           bitorder: str = "little", bits_path=None) -> None:
     """Те саме, що write_bits_bin, але КОЖЕН burst доповнюється нулями до кратності
     slot_bits ПЕРЕД конкатенацією - щоб кожен burst у файлі починався рівно на межі
     510-бітного (ETSI) слота. Призначення: вирівняний перегляд у bit viewer'і з рамкою
@@ -156,8 +168,7 @@ def write_bits_bin_aligned(path: str, bursts, slot_bits: int,
             bits = np.concatenate([bits, np.zeros(pad, dtype=np.uint8)])
         parts.append(bits)
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
-    with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+    _write_stream(stream, path, bitorder, bits_path)
 
 
 def _structured_slots(bits) -> tuple:
@@ -181,7 +192,7 @@ def _structured_slots(bits) -> tuple:
     return slots, unclassified
 
 
-def write_bits_bin_structured(path: str, bursts, bitorder: str = "little") -> tuple:
+def write_bits_bin_structured(path: str, bursts, bitorder: str = "little", bits_path=None) -> tuple:
     """.bin4: кожен burst - окремий слот по SLOT_BITS біт; burst стандартної довжини для його
     типу покладено після guard_before нулів розкладки, тож поля burst'ів одного типу стоять
     в одних колонках. Біти поза стандартним burst'ом (захоплена рампа) відкидаються, бракуючі
@@ -193,6 +204,5 @@ def write_bits_bin_structured(path: str, bursts, bitorder: str = "little") -> tu
         parts.append(slots.reshape(-1))
         n_unanchored += unanchored
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
-    with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+    _write_stream(stream, path, bitorder, bits_path)
     return len(stream) // SLOT_BITS, n_unanchored

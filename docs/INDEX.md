@@ -29,6 +29,7 @@ IQ (.wav 2ch int16 / .cs16)
        -> out.bin   (потік бітів для декодерів)   .bin2/.bin3/.bin4 - лише для перегляду
   -> source-py/wav-proc/tetra_prep.py   (запис 25 кГц для osmo tetra-rx)
   -> source-py/tetra_bits_export.py     (біти burst'ів у форматі tetra-rx: 1 біт = 1 байт)
+  -> out.bits/.bits2/.bits3/.bits4  (ті самі біти, 1 біт/байт, без залежності від -e)
   -> dmo/dmo_rx  (читає файл бітів, 1 біт/байт; DMO)
 ```
 

@@ -122,6 +122,20 @@ class TestBitsBinPhaseAligned(unittest.TestCase):
         self.assertEqual(len(self._write([])), 0)
 
 
+class TestUnpackedBits(unittest.TestCase):
+    """bits_path: ті самі біти, один біт у байті; упаковане подання з нього відновлюється в обох порядках."""
+    def test_unpacked_equals_packed_content_both_orders(self):
+        bursts = [SimpleNamespace(bits=[1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1]), SimpleNamespace(bits=[0, 1, 1])]
+        want = [1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1]
+        for order in ("little", "big"):
+            with tempfile.TemporaryDirectory() as d:
+                p, u = os.path.join(d, "x.bin"), os.path.join(d, "x.bits")
+                write_bits_bin(p, bursts, order, u)
+                self.assertEqual(np.fromfile(u, dtype=np.uint8).tolist(), want)
+                packed = np.unpackbits(np.fromfile(p, dtype=np.uint8), bitorder=order)[:len(want)]
+                self.assertEqual(packed.tolist(), want)
+
+
 class TestBitsBinStructured(unittest.TestCase):
     """.bin4: один слот на burst, поля у колонках стандарту незалежно від зсуву захоплення."""
     STS_COL = 34 + 214          # guard 34 + зсув STS у burst'і (таблиця 16 EN 300 396-2)
@@ -175,12 +189,12 @@ class TestCliOutputNames(unittest.TestCase):
 
     def test_default_stem_from_input(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._run(d), ["rec.bin", "rec.bin2", "rec.bin3", "rec.bin4", "rec.txt", "rec.wav"])
+            self.assertEqual(self._run(d), ["rec.bin", "rec.bin2", "rec.bin3", "rec.bin4", "rec.bits", "rec.bits2", "rec.bits3", "rec.bits4", "rec.txt", "rec.wav"])
 
     def test_o_is_stem(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(self._run(d, "-o", os.path.join(d, "out")),
-                             ["out.bin", "out.bin2", "out.bin3", "out.bin4", "out.txt", "rec.wav"])
+                             ["out.bin", "out.bin2", "out.bin3", "out.bin4", "out.bits", "out.bits2", "out.bits3", "out.bits4", "out.txt", "rec.wav"])
 
 
     def test_bin_matches_txt_bits(self):
