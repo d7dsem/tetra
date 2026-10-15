@@ -1,0 +1,209 @@
+# DMO MAC: DMAC-SYNC (SCH/S, SCH/H) і DM colour code
+
+Джерело норм: ETSI EN 300 396-3 V1.4.1 (2011-12), скорочено `[396-3 §x]`, `[396-3 table N]`. Сторінки - друковані номери в PDF.
+Паралельно: EN 300 396-2 V1.4.1, `[396-2 §x]` (див. `dmo/docs/dmo-phy-spec.md`).
+Таблиці 21 і 22 прочитано з відрендереного PDF (с. 157, PNG у scratchpad), решту значень (clause 9.3.x, 8.2.4) - з plain-text, де вони не спотворені. Мітка **UNVERIFIED** = не підтверджено.
+Нумерація бітів нижче: 0-based від першого переданого біта type-1 блоку (перший елемент таблиці передається першим; у багатобітовому елементі старший біт передається першим) [396-3 §9, вступ].
+
+## 1. Який PDU у якому блоці DSB
+
+| Блок DSB | Логічний канал | type-1 біт | PDU | Таблиця | Джерело |
+|---|---|---|---|---|---|
+| block 1 (BKN1) | SCH/S | 60 | DMAC-SYNC, частина "SCH/S" | table 21 | [396-3 §9.1.1] |
+| block 2 (BKN2) | SCH/H | 124 | DMAC-SYNC, частина "SCH/H" | table 22 | [396-3 §9.1.1] |
+
+- Один PDU DMAC-SYNC "завжди передається з використанням 60 біт SCH/S і 124 біт SCH/H" [396-3 §9.1.1]. Відображення MAC PDU на канали: DMAC-SYNC -> SCH/S + SCH/H [396-3 table 20, §8.2.3].
+- Вміст двох блоків "directly linked"; тип MAC PDU вказується в SCH/S і для прямого MS-MS завжди DMAC-SYNC [396-3 §8.5.1].
+- SCH/S несе синхронізацію (system code, slot, frame) і стан шифрування, що стосується SCH/H та подальшого трафіку; SCH/H несе MAC-заголовок (адреси, MNI, fill/frag, frame countdown, message type) і DM-SDU [396-3 §8.5.1, §8.5.2].
+- Розмір MAC block: 60 біт SCH/S, 124 біт SCH/H (з fill bits до повного розміру) [396-3 §8.2.2 (текст перед table 20)].
+- Значення "SYNC PDU type": 00 = DMAC-SYNC, 01 = DPRES-SYNC (presence signal, Part 4/5/7/10), 10 і 11 = reserved [396-3 §9.3.28]. Тобто той самий SCH/S формат використовує і DPRES-SYNC; нижче описано лише DMAC-SYNC.
+- Кодування блоків (60 -> 120, 124 -> 216 біт, скремблювання e=0 для DSB) - [396-2 §8.3.1.1, §8.3.1.2, §8.2.5.2], див. `dmo-phy-spec.md`.
+
+## 2. Розкладка SCH/S (60 біт) [396-3 table 21]
+
+Поля M = обов'язкові, C = умовні. Сума довжин у кожному варіанті = 60.
+
+| offset | довж. | Поле | Тип | Значення / умова | Джерело |
+|---|---|---|---|---|---|
+| 0..3 | 4 | System code | M | див. 2.1 | table 21, §9.3.29 |
+| 4..5 | 2 | SYNC PDU type | M | 00 = DMAC-SYNC (для цього PDU) | table 21, §9.3.28 |
+| 6..7 | 2 | Communication type | M | 00 = direct MS-MS; 01 = via DM-REP; 10 = via DM-GATE; 11 = via DM-REP/GATE. Table 21 вимагає 00 для direct MS-MS | table 21, §9.3.3 |
+| 8 | 1 | Master/slave link flag АБО Reserved | C | M/S flag, якщо comm type = 01 або 11; Reserved (default 0), якщо 00 або 10 | table 21 |
+| 9 | 1 | Gateway generated message flag АБО Reserved | C | gateway flag, якщо comm type = 10 або 11; Reserved (default 0), якщо 00 або 01 | table 21 |
+| 10..11 | 2 | A/B channel usage | M | 00 = channel A normal mode; 01 = channel A frequency efficient mode; 10 = channel B; 11 = reserved | table 21, §9.3.1 |
+| 12..13 | 2 | Slot number | M | 00 = slot 1, 01 = slot 2, 10 = slot 3, 11 = slot 4 | table 21, §9.3.25 |
+| 14..18 | 5 | Frame number | M | 00000 = reserved; 00001..10010 = frame 1..18; решта reserved | table 21, §9.3.11 |
+| 19..20 | 2 | Air interface encryption state | M | 00 = DM-1 (без шифрування); 01 = DM-2-C; 10 = DM-2-A; 11 = DM-2-B. Визначає інтерпретацію наступних 39 біт | table 21, §9.3.2 |
+| 21..59 | 39 | залежить від encryption state | C | див. нижче | table 21 |
+
+Bits 8 і 9 завжди присутні (по 1 біту) за будь-якого comm type: M/S flag у біті 8 означає "0 = slave link, 1 = master link" [396-3 §9.3.17], gateway flag у біті 9 "0 = message originated by DM-MS" [396-3 §9.3.13]. Для comm type = 00 обидва біти - Reserved, default 0 [table 21]. Обидва прапори "not used in the present document" [396-3 §9.3.13, §9.3.17].
+
+Поле 21..59:
+- Якщо encryption state = 00: один Reserved 39 біт, default all zeros (offset 21..59) [table 21].
+- Якщо encryption state != 00: Time Variant Parameter 29 біт (21..49), Reserved 1 біт, default 0 (50), KSG number 4 біти (51..54), Encryption key number 5 біт (55..59) [table 21]. TVP: TVP(0) = молодший, TVP(28) = старший біт [396-3 §9.3.30]; порядок передачі в table 21 не відрізняється від загального правила (старший біт першим) - зв'язок цього правила з "TVP(0) LSB" **UNVERIFIED** (стандарт прямо порядок бітів TVP на повітрі не повторює). KSG number: таблиця значень не читалась (**UNVERIFIED**, не потрібне для DM-1). Encryption key number: 5 біт, 00000 = SCK 1 ... 11111 = SCK 32 [396-3 §9.3.7].
+
+### 2.1 System code [396-3 §9.3.29]
+
+| Значення | Зміст |
+|---|---|
+| 0xxx | TMO system (EN 300 392-2) |
+| 100y (1000, 1001) | Reserved |
+| 1010, 1011 | DMO reserved |
+| 1100 | ETS 300 396-3 (DMO) - перша версія стандарту |
+| 1101 | EN 300 396-3 V1.2.1 ... до цієї версії (DMO AI) і EN 300 396-6 v1.2.1-1.4.1 (DMO Security) |
+| 1110, 1111 | DMO reserved |
+
+Правило прийому: DM-MS не повинен відкидати sync PDU з reserved system code з DMO-діапазону без подальшого дослідження (SYNC PDU type, message type) [396-3 §9.3.29]. Для DMAC-SYNC із відомим DMO-кодом також "should not reject" без перевірки решти [там само]. System code у DSB відрізняється від TMO SYNC PDU (0xxx) [396-3 §8.4.2.2.1, NOTE 5].
+
+## 3. Розкладка SCH/H (124 біт) [396-3 table 22]
+
+Порядок елементів зверху вниз = порядок передачі. Умови визначаються полями SCH/S (communication type) і самого SCH/H (fragmentation flag).
+
+| Поле | Довж. | Тип | Умова / значення | Джерело |
+|---|---|---|---|---|
+| Repeater address | 10 | C | якщо comm type = 01 | table 22, §9.3.23 |
+| Gateway address | 10 | C | якщо comm type = 10 або 11 | table 22, §9.3.12 |
+| Reserved | 10 | C | якщо comm type = 00; default all zeros | table 22 |
+| Fill bit indication | 1 | M | 0 = fill bits немає; 1 = є | §9.3.8 |
+| Fragmentation flag | 1 | M | 0 = без фрагментації; 1 = початок фрагментації | §9.3.9 |
+| Number of SCH/F slots | 4 | C | якщо fragmentation flag = 1; 0001..1001 = 1..9 слотів SCH/F; 0000 і решта reserved | table 22, §9.3.22 |
+| Frame countdown | 2 | M | 00 = фінальний кадр; 01/10/11 = ще 1/2/3 кадри повторень | §9.3.10 |
+| Destination address type | 2 | M | 00 = true SSI (з MNI з PDU); 01 = pseudo SSI; 10 = немає адреси (не використовується, і заборонено для direct MS-MS і DM-REP - NOTE table 22); 11 = reserved | §9.3.5 |
+| Destination address | 24 | C | якщо dest. address type != 10 (для direct MS-MS завжди) | table 22 |
+| Source address type | 2 | M | 00 = true SSI; 01 = pseudo SSI; 10 = немає (заборонено для direct); 11 = reserved | §9.3.27 |
+| Source address | 24 | C | якщо source address type != 10 (для direct завжди) | table 22 |
+| Mobile Network Identity | 24 | C | завжди, якщо comm type = 00 або 01; для 10/11 - EN 300 396-5 | table 22, §9.3.20 |
+| Message type | 5 | M | див. 3.2 | §9.3.19 |
+| Message dependent elements | змінна | C | залежать від message type, clause 9.4/9.5 | table 22, §9.3.18 |
+| DM-SDU | змінна | C | дані layer 3 | table 22 |
+
+MNI = 10 біт MCC + 14 біт MNC, старший біт першим [396-3 §9.3.20 + NOTE]. Порядок MCC перед MNC випливає з NOTE ("10-bit MCC and a 14-bit MNC") і з посилання на EN 300 396-1 clause 6.2; самого розміщення в бітах окремо не наведено - **UNVERIFIED** (EN 300 396-1 не читався).
+
+### 3.1 Бітові зміщення для direct MS-MS (comm type = 00)
+
+Зміщення виведено підсумовуванням довжин table 22 (не окремою цитатою стандарту).
+
+| Поле | Без фрагментації (frag=0) | З фрагментацією (frag=1) |
+|---|---|---|
+| Reserved (10) | 0..9 | 0..9 |
+| Fill bit indication | 10 | 10 |
+| Fragmentation flag | 11 | 11 |
+| Number of SCH/F slots | - | 12..15 |
+| Frame countdown | 12..13 | 16..17 |
+| Destination address type | 14..15 | 18..19 |
+| Destination address | 16..39 | 20..43 |
+| Source address type | 40..41 | 44..45 |
+| Source address | 42..65 | 46..69 |
+| MNI | 66..89 | 70..93 |
+| Message type | 90..94 | 94..98 |
+| Message dependent + DM-SDU (+ fill) | 95..123 (29 біт) | 99..123 (25 біт) |
+
+Для comm type = 01 перше поле - Repeater address (10) замість Reserved, решта зміщень ті самі (довжина та сама). Для 10/11 довжина MNI/структура залежить від EN 300 396-5 - **UNVERIFIED** (не читався).
+
+Fill bits: якщо MAC header + DM-SDU коротші за блок, DM-MAC ставить fill bit indication = 1, додає біт "1" відразу після останнього біта DM-SDU (або заголовка, якщо DM-SDU немає) і доповнює блок нулями; для DMAC-SYNC це стосується лише SCH/H, не SCH/S [396-3 §8.5.5.1, §9.3.8]. Один MAC PDU на блок [там само, NOTE].
+
+Шифрування DM-2-C: у DMAC-SYNC PDU шифруються поля від destination address і далі, крім source address type [396-3 §9.3.2]. Для DM-2-A шифруються лише DM-SDU, для DM-2-B - destination address і DM-SDU. Заголовки address type не шифруються [там само, NOTE 1]. Адреси при DM-1 передаються у відкритому вигляді.
+
+### 3.2 Message type (5 біт) [396-3 §9.3.19]
+
+00000 DM-RESERVED; 00001 DM-SDS OCCUPIED; 00010 DM-TIMING REQUEST; 00011 DM-TIMING ACK; 00100..00111 reserved; 01000 DM-SETUP; 01001 DM-SETUP PRES; 01010 DM-CONNECT; 01011 DM-DISCONNECT; 01100 DM-CONNECT ACK; 01101 DM-OCCUPIED; 01110 DM-RELEASE; 01111 DM-TX CEASED; 10000 DM-TX REQUEST; 10001 DM-TX ACCEPT; 10010 DM-PREEMPT; 10011 DM-PRE ACCEPT; 10100 DM-REJECT; 10101 DM-INFO; 10110 DM-SDS UDATA; 10111 DM-SDS DATA; 11000 DM-SDS ACK; 11001 gateway-specific; 11010..11101 reserved; 11110, 11111 proprietary.
+
+### 3.3 Про "power class" і "кількість таймслотів"
+
+У SCH/S таких полів немає. Power class (3 біти: 000 null, 001..101 = клас 1..5, 110/111 reserved [396-3 §9.6.8]) входить у message dependent elements конкретних повідомлень (наприклад DM-SETUP table 31, DM-CONNECT ACK table 35, DM-OCCUPIED table 36, DM-RESERVED table 27), тобто лежить у SCH/H після message type. Окремого елемента "number of timeslots" ні в table 21, ні в table 22 немає; є лише "Number of SCH/F slots" (число наступних фрагментів, §9.3.22). Розкладки message dependent elements по повідомленнях тут не розписано (поза обсягом) - **UNVERIFIED** (читались лише заголовки таблиць 27-47).
+
+## 4. DM colour code (DCC) e(1..30)
+
+### 4.1 Виведення [396-3 §8.2.4]
+
+- Для SCH/F, STCH і TCH DCC = 30-бітна послідовність e(1)..e(30), "algorithmic combination" source address (SSI або pseudo SSI) і 6 молодших біт MNI.
+- Порядок кодування, прямо з стандарту: e(1) = 6-й з кінця біт MNI; e(2) = 5-й з кінця; ...; e(6) = молодший біт MNI; e(7) = старший біт source address; ...; e(30) = молодший біт source address.
+- Отже e(1..6) = MNI[5..0] (старший з шести першим), e(7..30) = source address[23..0] (старший першим). Стандарт описує це лише як порядок кодування, жодної додаткової операції (XOR тощо) над цими бітами не наводить; слово "algorithmic combination" ніде не розшифроване - тому конкатенація є висновком із порядку кодування, а не окремою формулою. Статус: прямо випливає з тексту, додаткової формули не знайдено.
+- Джерела MNI і source address: з елементів "mobile network identity" і "source address" у DMAC-SYNC PDU, що ніс DM-SETUP, DM-CONNECT ACK або DM-OCCUPIED для поточної передачі (для STCH і TCH); для SCH/F - з DMAC-SYNC, що ініціював фрагментацію (DM-SDS UDATA/DATA/ACK) [396-3 §8.2.4]. Source address може бути true SSI або pseudo SSI, правило однакове [NOTE там само]. MNI і source address у DM-OCCUPIED мають збігатись із DM-SETUP/DM-CONNECT ACK, бо їх використовує scrambling [396-3 §8.5.2.1.1, NOTE 4].
+- DM-2-C (encryption state = 01): MNI береться до шифрування, замість source address - EDSI (Encrypted DMO Short Identity) для поточного слота; EDSI залежить від TVP, тож DCC змінюється кожен слот трафіку/SCH/F [396-3 §8.2.4]. Спосіб обчислення EDSI - у EN 300 396-6, **UNVERIFIED** (не читався).
+- Власне 6 молодших біт MNI = 6 молодших біт MNC (MNI = MCC 10 біт + MNC 14 біт, MNC в молодших бітах) - висновок з розкладки MNI [396-3 §9.3.20 NOTE]; сам стандарт пише "6 least significant bits of the MNI".
+
+### 4.2 Де застосовується
+
+- Скремблювання генерується з 30-бітного DCC і застосовується в lower MAC до всіх логічних каналів, окрім SCH/S і SCH/H у DSB [396-3 §8.2.4; 396-2 §8.2.5.2]. Тобто DCC потрібен для: DNB-блоків SCH/F, STCH, TCH (всі нормальні бурсти DNB).
+- SCH/S і SCH/H у DSB скремблюються тим самим механізмом, але e(1..30) = 0 [396-3 §8.2.4; 396-2 §8.2.5.2]. Тому DSB декодується без знання DCC, а DCC береться з розкодованого DSB (MNI + source address) і далі застосовується до DNB тієї ж передачі.
+- DCC "не передається в інформації, а модифікує її": при хибному DCC CRC не зійдеться [396-3 §8.2.2, текст перед table 20].
+- Приймач DM-2-C без ключів не може дескремблювати DNB, бо DCC залежить від EDSI [396-3 §8.4.2.2.2.2, NOTE 2 (підпункт про fast call set-up surveillance)].
+
+### 4.3 Відображення 30 бітів на ініціалізацію скремблера [396-2 §8.2.5.2]
+
+- Ініціалізація (40): p(k) = e(1-k) для k = -29..0; p(-31) = p(-30) = 1 [396-2 §8.2.5.2, (40); прочитано з рендеру в `dmo-phy-spec.md`]. Отже p(0) = e(1), p(-29) = e(30).
+- У представленні 32-бітного слова з `dmo-phy-spec.md` §4.2 (біт N = p(k-(32-N)), біт 31 = p(k-1)): біт 31 = e(1), ..., біт 2 = e(30), біт 1 = p(-30) = 1, біт 0 = p(-31) = 1. Тобто **init = (E << 2) | 3**, де E = 30-бітне ціле з e(1) як старшим бітом, e(30) як молодшим.
+- Для DMO: E = (MNI mod 64) << 24 | source_address (24 біти). Це збігається за формою з `tetra_scramb_get_init` в osmo (`((colour | mnc<<6 | mcc<<20) << 2) | 3`), де 30-бітне число так само має старший біт першим; різниця лише в тому, що в TMO це colour(6)+MNC(14)+MCC(10), а в DMO - MNI(6 молодших бітів)+source address(24). Висновок про E для DMO зроблено мною з комбінації [396-3 §8.2.4] і [396-2 (40)], єдиної цитати стандарту з готовою формулою E немає; перевірку на реальних даних DNB не проводилось - **UNVERIFIED** у частині "кінцевий init для DNB".
+
+## 5. Лічильники і структура DM-кадру
+
+- Структура: кадр = 4 слоти, мультикадр = 18 кадрів, слот = 14,167 мс [396-3 §4.3.1, §8.4.1.1]. Гіперкадру в DMO немає (в DMAC-SYNC лише slot і frame) [table 21].
+- Slot number (2 біти, 00..11 = слот 1..4) і Frame number (5 біт, 1..18; 0 і 19..31 reserved) задають положення передачі DSB у структурі, щоб slave/idle MS виставили свої лічильники слота і кадру [396-3 §9.3.25, §9.3.11].
+- Подальші слоти кадрів виводяться з цих двох значень: приймач бере slot/frame з DSB як часову прив'язку DM-каналу [396-3 §8.4.1.2 (timing reference), §8.4.2.2.1.2 NOTE 2 - слот/кадр іншого DM-каналу виводиться з зайнятого].
+- Положення DSB у кадрах під час виклику: кадр 18 - синхронізація (звичайно DSB у слотах 1 і 3); кадри 6 і 12 - DSB зі слотом 3 (occupation) та слотами 1 і 3 (reservation); pre-emption у слоті 3 кадрів 2, 5, 8, 11, 14, 17; linearization у слоті 3 кадру 3 [396-3 §4.3.1].
+- A/B channel usage вказує канал A (слоти 1,3) чи B (зсув на один слот, нумерація каналу B відстає на один слот) [396-3 §8.4.1.2, §8.4.1.3], а також frequency efficient mode.
+- Frame countdown (SCH/H, 2 біти) - це не лічильник кадрів структури, а кількість ще очікуваних повторень цього ж повідомлення (0..3) [396-3 §9.3.10, §8.4.7.2, §8.5.6].
+- Number of SCH/F slots (4 біти) - кількість наступних SCH/F слотів при фрагментації [396-3 §9.3.22].
+- Frame countdown і Number of SCH/F slots не вказують frame/slot структуру, лише тайминг повторів/фрагментів.
+- При пошуку синхронізації DM-MS шукає DSB з довільним таймінгом: щонайменше один DSB із 8 у послідовних слотах [396-3 §8.4.2.2.2.1].
+
+## 6. Застосування до трьох записаних рядків SCH/S
+
+Розкладку з розділу 2 застосовано до трьох рядків по 60 біт. Підрахунок виконано скриптом Python у scratchpad (`python3 -I`, лише нарізання рядків; нічого з проєкту не запускалось). Кожен рядок має рівно 60 символів.
+
+| Поле | offset | (a) | (b) | (c) |
+|---|---|---|---|---|
+| System code | 0..3 | 1100 | 1100 | 1100 |
+| SYNC PDU type | 4..5 | 00 (DMAC-SYNC) | 00 | 00 |
+| Communication type | 6..7 | 00 (direct MS-MS) | 00 | 00 |
+| bit 8 (Reserved при comm 00) | 8 | 0 | 0 | 0 |
+| bit 9 (Reserved при comm 00) | 9 | 0 | 0 | 0 |
+| A/B channel usage | 10..11 | 00 (channel A, normal) | 00 | 00 |
+| Slot number | 12..13 | 01 = слот 2 | 10 = слот 3 | 11 = слот 4 |
+| Frame number | 14..18 | 01111 = 15 | 01111 = 15 | 01111 = 15 |
+| Air interface encryption state | 19..20 | 00 (DM-1) | 00 | 00 |
+| Reserved 39 | 21..59 | усі нулі | усі нулі | усі нулі |
+
+Оцінка за стандартом:
+- 1100 - допустимий system code: "ETS 300 396-3 (DMO)" [396-3 §9.3.29]. Це не TMO-значення (TMO = 0xxx), тож "system code 1100" у TMO-шаблоні був хибним тлумаченням, а не помилкою даних.
+- SYNC PDU type 00 = DMAC-SYNC, comm type 00 = direct MS-MS, обидва біти 8 і 9 = 0 - саме ті значення, які вимагає table 21 для direct MS-MS (reserved, default 0).
+- A/B = 00, encryption state = 00: допустимо; тоді решта 39 біт - Reserved, "default value = all zeros" [table 21]; у всіх трьох рядках це так.
+- Frame number 15 - у діапазоні 1..18 [§9.3.11]; slot 2, 3, 4 - допустимі.
+- Узгодженість a/b/c: однаковий кадр (15), слоти 2, 3, 4 по порядку, усі інші біти ідентичні. Це саме те, що очікується від трьох DSB, надісланих у послідовних слотах одного кадру (стандарт допускає серії DSB у суміжних слотах з довільним таймінгом, [396-3 §8.4.2.2.2.1]). Зростання лічильника слота на 1 від (a) до (c) - чітка внутрішня узгодженість, яку випадковий шум (хибне декодування) майже не давав би.
+
+Вердикт: усі три рядки - валідні, внутрішньо узгоджені DMAC-SYNC SCH/S за EN 300 396-3 V1.4.1 table 21 (DMO, direct MS-MS, канал A, без шифрування, кадр 15, слоти 2/3/4). Це DMO DSB, а не TMO SYNC.
+
+Що з цього НЕ випливає: (1) чи пройшов CRC у цих блоків - у вхідних даних лише 60 type-1 біт, а CRC-перевірку не виконано; (2) чи збігається поле slot з реальним слотом, у якому прийнято бурст, - невідомо без таймінгу запису; (3) значення SCH/H (адреси, MNI, message type) невідомі, бо SCH/H для цих рядків не надано. Якщо ці блоки пройшли CRC, значення виглядають цілком реалістично.
+
+Примітка до "1100": у table §9.3.29 1100 = ETS 300 396-3 (перша версія), а 1101 = EN 300 396-3 V1.2.1 і новіші. Обидва - законні значення; чому передавач ставить саме 1100, стандарт не пояснює (причина **UNVERIFIED**).
+
+## 7. Відмінності V1.4.1 (2011-12) і V1.2.1 (2004-12) у використаних частинах
+
+Порівняно читанням тексту обох редакцій (V1.2.1 - plain-text; PDF V1.2.1 окремо не рендерився).
+
+| Місце | V1.2.1 | V1.4.1 |
+|---|---|---|
+| Table 21 (SCH/S) | ті самі поля, довжини, умови | без змін (рендер V1.4.1; V1.2.1 з тексту) |
+| Table 22 (SCH/H) | ті самі | без змін; посилання "see part 5" замінено на "EN 300 396-5 [5]" |
+| System code §9.3.29 | 1100 = ETS 300 396-3; 1101 = "Version 1.2.1 of the present document (DMO)" | 1101 = EN 300 396-3 V1.2.1 до поточної версії (DMO AI) і EN 300 396-6 v1.2.1-1.4.1 (DMO Security); додано примітку, що версія документів може змінюватись без зміни system code |
+| System code, правило прийому | абзаців про "shall/should not reject" після таблиці немає (за текстом V1.2.1) | є абзаци "DM-MSs shall not reject ... reserved system code in the DMO range" і про DPRES-SYNC |
+| SYNC PDU type §9.3.28 | посилання на ETS 300 396-5, EN 300 396-7, EN 300 396-10 | ті самі, оновлені назви/посилання (EN 300 396-5, [i.2], [i.3]) |
+| DCC §8.2.4 | e(1)..e(30), та сама порядок бітів, та сама DM-2-C/EDSI вимога, e=0 для DSB | без змін по суті |
+| Frame number §9.3.11 | 00000 reserved, 1..18 | без змін |
+| Air interface encryption state §9.3.2 | DM-2-A/B/C визначено; нотатки NOTE 1-3 | додано NOTE 1-3 про відсутність шифрування типів адрес і рівні безпеки |
+
+Суттєвих відмінностей у форматі table 21/22 і правилах DCC між двома редакціями не знайдено.
+
+## 8. Список UNVERIFIED
+
+1. Порядок бітів TVP на повітрі (стандарт вказує TVP(0) = LSB, а передачу описано загальним правилом "MSB first"); таблиця KSG number не читалась.
+2. Розмір/розкладка SCH/H при comm type = 10 або 11 (EN 300 396-5), поле MNI там.
+3. Розкладка message dependent elements конкретних повідомлень (clause 9.4-9.5), крім згадки про power class.
+4. (зарезервовано)
+5. Позиція MCC і MNC всередині 24-бітного MNI (на базі NOTE у §9.3.20 це MCC першим, але деталі EN 300 396-1 не читались).
+6. "Algorithmic combination" для DCC: стандарт дає лише порядок кодування e(1..30); конкатенація MNI[5..0] + source address - висновок з нього, формули немає.
+7. Обчислення EDSI для DM-2-C (EN 300 396-6).
+8. Кінцевий init скремблера для DNB (формула init = (E<<2)|3 зі складним E) не перевірялась на реальному DNB.
+9. Чи пройшли CRC три рядки з розділу 6 і чи збігаються їхні slot/frame з реальним таймінгом запису.
+10. PDF V1.2.1 не рендерився; порівняння V1.2.1 зроблено за текстом.
