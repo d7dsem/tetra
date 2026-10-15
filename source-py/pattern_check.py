@@ -98,6 +98,26 @@ def best_match_for_field(bits_str: str, pattern: str, base_pos: int,
     return best / L if best is not None else None
 
 
+# Типи burst'ів за навчальною послідовністю: назва -> позиція в burst'і (з KNOWN_FIELDS).
+# NTS3 не враховується: позиція в KNOWN_FIELDS невизначена (0).
+BURST_TYPE_FIELDS = ("STS", "NTS1", "NTS2")
+BURST_TYPE_NONE = "-"
+
+
+def burst_type(bits, threshold: float = DETECT_THRESHOLD) -> str:
+    """Тип burst'а за навчальною послідовністю в першому слоті: назва послідовності
+    з найменшою часткою помилок (<= threshold) у вікні ±ALIGN_WINDOW_BITS навколо
+    її позиції, або BURST_TYPE_NONE."""
+    s = _bits_to_str(bits)
+    best_name, best_rate = BURST_TYPE_NONE, None
+    for name in BURST_TYPE_FIELDS:
+        pattern, pos, _ = KNOWN_FIELDS[name]
+        rate = best_match_for_field(s[:pos + len(pattern) + ALIGN_WINDOW_BITS], pattern, pos)
+        if rate is not None and rate <= threshold and (best_rate is None or rate < best_rate):
+            best_name, best_rate = name, rate
+    return best_name
+
+
 @dataclass
 class FieldStat:
     status: str               # "ok" (шукали) | "formula" (не фіксована послідовність)

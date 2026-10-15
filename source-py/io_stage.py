@@ -9,16 +9,17 @@
   write_bits_bin_phase_aligned() точніше: burst доповнюється нулями З ОБОХ боків
                           на його СПРАВЖНЮ фазу всередині слота (з start_sample),
                           а не просто зшивається після попереднього - для bit viewer'а
-Формат рядка: t_start_s start_sample n_samples n_bits n_sym snr_db freq_hz coherence phase_rms_deg flags bits
+Формат рядка: t_start_s start_sample n_samples n_bits n_sym snr_db freq_hz coherence phase_rms_deg type flags bits
 (start_sample, n_samples: позиція і довжина burst'а в СИРИХ семплах, work_fs_hz Гц -
  ті самі індекси, що й у вхідному масиві ДО matched filter, для дослідження сирого запису)
 (snr_db: часовий метод, на сирому масиві до matched filter; '-' якщо недоступно)
+(type: STS | NTS1 | NTS2 | '-' - за навчальною послідовністю в першому слоті, pattern_check.burst_type)
 (flags: '-' або LOWCOH,NEARLIM)
 """
 import numpy as np
 from scipy.io import wavfile
 
-from pattern_check import KNOWN_FIELDS, summarize_recording
+from pattern_check import KNOWN_FIELDS, burst_type, summarize_recording
 
 
 def _open_int16_iq(path: str, fs_hint=None):
@@ -51,7 +52,7 @@ def load_iq(path: str, fs_hint=None):
 
 
 REPORT_COLUMNS = ("t_start_s", "start_sample", "n_samples", "n_bits", "n_sym", "snr_db",
-                  "freq_hz", "coherence", "phase_rms_deg", "flags", "bits")
+                  "freq_hz", "coherence", "phase_rms_deg", "type", "flags", "bits")
 
 
 def write_bursts(path: str, bursts) -> None:
@@ -62,7 +63,7 @@ def write_bursts(path: str, bursts) -> None:
         snr_s = f"{b.snr_db:+.2f}" if b.snr_db is not None else "-"
         rows.append((f"{b.t_start_s:.6f}", str(b.start), str(b.end - b.start), str(len(b.bits)), str(b.n_sym),
                      snr_s, f"{b.freq_hz:+.1f}", f"{b.coherence:.3f}", f"{b.phase_rms_deg:.1f}",
-                     str(b.flags), "".join(map(str, b.bits))))
+                     burst_type(b.bits), str(b.flags), "".join(map(str, b.bits))))
     widths = [max([len(name), *(len(r[i]) for r in rows)]) for i, name in enumerate(REPORT_COLUMNS)]
     widths[0] += 2                      # місце під "# " у рядку-заголовку колонок
 
