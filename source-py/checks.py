@@ -36,19 +36,19 @@ def _subsample(x: np.ndarray, max_n: int = 1 << 22) -> np.ndarray:
 def check_meta(n_in: int, fs: float, cfg: PipelineConfig) -> CheckResult:
     r, h = CheckResult(), cfg.health
     if not np.isfinite(fs) or fs <= 0:
-        r.add(error("meta", "BAD_FS", f"некоректна частота дискретизації: {fs}", fatal=True))
+        r.add(error("meta", "BAD_FS", f"invalid sample rate: {fs}", fatal=True))
         return r
     dur = n_in / fs
     r.metrics.update(meta_fs_hz=float(fs), meta_n_samples=int(n_in), meta_duration_s=float(dur))
     if fs < h.min_fs_hz:
         r.add(error("meta", "FS_TOO_LOW",
-                    f"fs={fs:.0f} Гц нижче мінімуму {h.min_fs_hz:.0f} Гц (2·symbol_rate): сигнал не вміщується",
+                    f"fs={fs:.0f} Hz below minimum {h.min_fs_hz:.0f} Hz (2*symbol_rate): signal does not fit",
                     fs, h.min_fs_hz, fatal=True))
     if n_in == 0:
-        r.add(error("meta", "EMPTY_INPUT", "у файлі немає відліків", 0, fatal=True))
+        r.add(error("meta", "EMPTY_INPUT", "file has no samples", 0, fatal=True))
     elif dur < h.min_duration_s:
         r.add(error("meta", "INPUT_TOO_SHORT",
-                    f"тривалість {dur * 1e3:.1f} мс менша за мінімум {h.min_duration_s * 1e3:.0f} мс",
+                    f"duration {dur * 1e3:.1f} ms is below the minimum {h.min_duration_s * 1e3:.0f} ms",
                     dur, h.min_duration_s, fatal=True))
     return r
 
@@ -70,11 +70,11 @@ def check_nonfinite(bad: int, n: int, cfg: PipelineConfig) -> CheckResult:
     r.metrics["input_nonfinite_frac"] = float(frac)
     if frac > cfg.health.nonfinite_err_frac:
         r.add(error("input", "NONFINITE_TOO_MANY",
-                    f"{bad} відліків ({frac:.2%}) нескінченні або NaN: дані пошкоджено",
+                    f"{bad} samples ({frac:.2%}) are infinite or NaN: data is corrupted",
                     frac, cfg.health.nonfinite_err_frac, fatal=True))
     elif bad:
         r.add(warn("input", "NONFINITE_SAMPLES",
-                   f"{bad} відліків NaN/Inf замінено нулями", frac))
+                   f"{bad} NaN/Inf samples replaced with zeros", frac))
     return r
 
 
@@ -88,32 +88,32 @@ def check_levels(x: np.ndarray, cfg: PipelineConfig) -> CheckResult:
     r.metrics["level_rms_dbfs"] = _db(mean_p)          # 10*log10(rms^2) = 20*log10(rms)
     if rms < h.silence_rms:
         r.add(error("levels", "SILENT_INPUT",
-                    f"RMS={rms:.2e} (повна шкала 1.0) нижче {h.silence_rms:.0e}: вхід порожній або майже нульовий",
+                    f"RMS={rms:.2e} (full scale 1.0) is below {h.silence_rms:.0e}: input is empty or near-zero",
                     rms, h.silence_rms, fatal=True))
         return r
     if rms < h.low_level_rms:
         r.add(warn("levels", "LOW_LEVEL",
-                   f"RMS={rms:.2e}: дуже низький рівень, корисний сигнал займає мало розрядів",
+                   f"RMS={rms:.2e}: very low level, the useful signal occupies few bits of resolution",
                    rms, h.low_level_rms))
     clip = float(np.mean((np.abs(s.real) >= h.clip_level) | (np.abs(s.imag) >= h.clip_level)))
     r.metrics["level_clip_frac"] = clip
     if clip > h.clip_err_frac:
         r.add(error("levels", "CLIPPING",
-                    f"{clip:.2%} відліків на межі шкали: сигнал обрізано, демодуляція спотворена",
+                    f"{clip:.2%} of samples are at full scale: signal is clipped, demodulation is distorted",
                     clip, h.clip_err_frac))
     elif clip > h.clip_warn_frac:
-        r.add(warn("levels", "CLIPPING", f"{clip:.2%} відліків на межі шкали", clip, h.clip_warn_frac))
+        r.add(warn("levels", "CLIPPING", f"{clip:.2%} of samples are at full scale", clip, h.clip_warn_frac))
     dc = float(abs(s.mean(dtype=np.complex128)) / rms)
     r.metrics["level_dc_ratio"] = dc
     if dc > h.dc_warn_ratio:
         r.add(warn("levels", "DC_OFFSET",
-                   f"середнє IQ складає {dc:.2f} від RMS (постійна складова)", dc, h.dc_warn_ratio))
+                   f"mean IQ is {dc:.2f} of RMS (DC offset)", dc, h.dc_warn_ratio))
     circ = float(abs((s * s).mean(dtype=np.complex128)) / mean_p)
     r.metrics["level_circularity"] = circ
     if circ > h.circularity_warn:
         r.add(warn("levels", "IQ_IMPROPER",
-                   f"|mean(x²)|/mean|x|²={circ:.2f}: I і Q статистично не рівноправні "
-                   "(дисбаланс IQ або сигнал з некруглою модуляцією)", circ, h.circularity_warn))
+                   f"|mean(x²)|/mean|x|²={circ:.2f}: I and Q are statistically unequal "
+                   "(IQ imbalance or a non-circular modulation)", circ, h.circularity_warn))
     return r
 
 
@@ -130,7 +130,7 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
     fs, nfft = fe.work_fs_hz, h.spec_nfft
     nb = len(xw) // nfft
     if nb < 8:
-        r.add(info("spectrum", "SPEC_SKIPPED", "замало відліків для спектрального аналізу"))
+        r.add(info("spectrum", "SPEC_SKIPPED", "not enough samples for spectral analysis"))
         return r
     X = xw[: nb * nfft].reshape(nb, nfft)
     sel = _select_blocks(nb, h.spec_max_blocks)
@@ -174,8 +174,8 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
 
     if mask.sum() < 8:
         r.add(warn("spectrum", "SPEC_NO_SIGNAL",
-                   "у спектрі немає виділеної смуги над шумом: сигналу не знайдено або він нижче порога "
-                   f"(поріг {h.spec_signal_db:.0f} дБ над шумом)"))
+                   "no distinct band above noise in the spectrum: no signal found, or it is below the threshold "
+                   f"(threshold {h.spec_signal_db:.0f} dB above noise)"))
         return r
 
     Sig = np.where(mask, S - noise, 0.0)
@@ -193,18 +193,18 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
     limit = ambiguity_hz(fe.symbol_rate_hz)
     if abs(centroid) > limit:
         r.add(error("spectrum", "COARSE_OFFSET",
-                    f"центр потужності сигналу {centroid:+.0f} Гц виходить за межу однозначності ±{limit:.0f} Гц: "
-                    "оцінка тонкого зсуву буде хибною (згортання фази). Зніміть грубий зсув до обробки",
+                    f"signal power centroid {centroid:+.0f} Hz is outside the ambiguity limit ±{limit:.0f} Hz: "
+                    "the fine offset estimate will be wrong (phase wrap). Remove the coarse offset before processing",
                     centroid, limit))
     elif abs(centroid) > h.coarse_warn_frac * limit:
         r.add(warn("spectrum", "COARSE_OFFSET",
-                   f"центр потужності {centroid:+.0f} Гц близько до межі однозначності ±{limit:.0f} Гц",
+                   f"power centroid {centroid:+.0f} Hz is close to the ambiguity limit ±{limit:.0f} Hz",
                    centroid, h.coarse_warn_frac * limit))
     ratio = bw / bw_exp
     if not (h.bw_min_ratio <= ratio <= h.bw_max_ratio):
         r.add(warn("spectrum", "BANDWIDTH",
-                   f"ширина 99% потужності {bw:.0f} Гц це {ratio:.2f}× від очікуваної {bw_exp:.0f} Гц "
-                   f"(symbol_rate·(1+rolloff)): не схоже на один канал заданого типу",
+                   f"99% power bandwidth {bw:.0f} Hz is {ratio:.2f}x the expected {bw_exp:.0f} Hz "
+                   f"(symbol_rate*(1+rolloff)): does not look like a single channel of the configured type",
                    ratio, h.bw_max_ratio))
 
     near = np.r_[S[c0 - 60:c0 - 10], S[c0 + 11:c0 + 61]]
@@ -212,7 +212,7 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
     r.metrics["spec_dc_spike_db"] = dc_db
     if dc_db > h.dc_spike_warn_db:
         r.add(warn("spectrum", "DC_SPIKE",
-                   f"на 0 Гц є пік {dc_db:.1f} дБ над сусідніми бінами", dc_db, h.dc_spike_warn_db))
+                   f"there is a {dc_db:.1f} dB peak at 0 Hz above neighboring bins", dc_db, h.dc_spike_warn_db))
 
     k0 = int(round(fe.symbol_rate_hz / fs * nfft))
     if k0 + 41 < len(E):
@@ -221,13 +221,13 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
         r.metrics["spec_symline_db"] = line_db
         if line_db < h.symline_min_db:
             r.add(warn("spectrum", "SYMBOL_LINE",
-                       f"лінія символьної швидкості {fe.symbol_rate_hz:.0f} Гц у спектрі обвідної слабка "
-                       f"({line_db:.1f} дБ): сигнал не має очікуваної символьної структури або завеликий шум; "
-                       "оцінка timing буде ненадійною", line_db, h.symline_min_db))
+                       f"the symbol-rate line at {fe.symbol_rate_hz:.0f} Hz in the envelope spectrum is weak "
+                       f"({line_db:.1f} dB): the signal lacks the expected symbol structure, or noise is too high; "
+                       "timing estimation will be unreliable", line_db, h.symline_min_db))
     if swing < h.continuous_swing_db:
         r.add(warn("spectrum", "CONTINUOUS_SIGNAL",
-                   f"розмах потужності між блоками лише {swing:.1f} дБ за наявності сигналу: пауз немає. "
-                   "Режим search.noise_mode=global тут не працює, використайте fixed або local",
+                   f"power swing between blocks is only {swing:.1f} dB while signal is present: there are no gaps. "
+                   "search.noise_mode=global will not work here, use fixed or local",
                    swing, h.continuous_swing_db))
     return r
 
@@ -242,12 +242,12 @@ def check_activity(sr: SearchResult, n_work: int, cfg: PipelineConfig) -> CheckR
         r.metrics["act_median_len_sym"] = float(np.median([e - s for s, e in sr.final]) / cfg.search.sps)
     if n_final == 0:
         r.add(warn("activity", "NO_BURSTS",
-                   f"burst'ів не знайдено (сегментів: raw={len(sr.raw)}, merged={n_merged}, "
-                   f"після фільтра довжини={len(sr.filtered)}). Перевірте search.on_db, search.noise_mode, "
+                   f"no bursts found (segments: raw={len(sr.raw)}, merged={n_merged}, "
+                   f"after length filter={len(sr.filtered)}). Check search.on_db, search.noise_mode, "
                    "search.min_len_sym"))
     elif n_merged and n_final / n_merged < h.segments_short_frac:
         r.add(warn("activity", "SEGMENTS_TOO_SHORT",
-                   f"лише {n_final} з {n_merged} сегментів пройшли фільтр довжини та обрізання країв",
+                   f"only {n_final} of {n_merged} segments passed the length filter and edge trimming",
                    n_final / n_merged, h.segments_short_frac))
     return r
 
@@ -260,11 +260,11 @@ def check_bursts(bursts, rejected: int, failed: int, first_error: Optional[str],
     r.metrics.update(burst_ok=n, burst_rejected=rejected, burst_failed=failed)
     if failed:
         r.add(error("bursts", "BURST_EXCEPTION",
-                    f"{failed} burst'ів не оброблено через виняток; перший: {first_error}", failed))
+                    f"{failed} bursts not processed due to an exception; first: {first_error}", failed))
     total = n + rejected
     if total and rejected / total > h.rejected_share_warn:
         r.add(warn("bursts", "MANY_REJECTED",
-                   f"{rejected} з {total} burst'ів відкинуто за quality.min_coherence",
+                   f"{rejected} of {total} bursts rejected by quality.min_coherence",
                    rejected / total, h.rejected_share_warn))
     if n == 0:
         return r
@@ -285,23 +285,23 @@ def check_bursts(bursts, rejected: int, failed: int, first_error: Optional[str],
         if abs(diff) > h.freq_mismatch_hz:
             step = cfg.front.symbol_rate_hz / 4
             r.add(error("bursts", "FREQ_ALIAS",
-                        f"зсув за burst'ами ({np.median(freq):+.0f} Гц) розходиться зі спектральним центром "
-                        f"({spec_offset_hz:+.0f} Гц) на {diff:+.0f} Гц (період згортання {step:.0f} Гц): "
-                        "фазу, найімовірніше, згорнуто, біти недостовірні",
+                        f"burst-based offset ({np.median(freq):+.0f} Hz) disagrees with the spectral centroid "
+                        f"({spec_offset_hz:+.0f} Hz) by {diff:+.0f} Hz (wrap period {step:.0f} Hz): "
+                        "the phase is most likely wrapped, bits are unreliable",
                         diff, h.freq_mismatch_hz))
     if np.median(coh) < h.coh_median_min:
         r.add(warn("bursts", "LOW_COHERENCE",
-                   f"медіана когерентності {np.median(coh):.2f}: сигнал слабо схожий на π/4-DQPSK "
-                   "(шум, інша модуляція або інша символьна швидкість)",
+                   f"median coherence {np.median(coh):.2f}: signal does not look much like π/4-DQPSK "
+                   "(noise, a different modulation, or a different symbol rate)",
                    float(np.median(coh)), h.coh_median_min))
     if near >= h.near_limit_share_warn:
         r.add(warn("bursts", "FREQ_NEAR_LIMIT",
-                   f"у {near:.0%} burst'ів |f| > {h.near_limit_frac:.0%} межі однозначності ±{limit:.0f} Гц: "
-                   "можливе згортання фази, біти недостовірні", near, h.near_limit_share_warn))
+                   f"in {near:.0%} of bursts |f| > {h.near_limit_frac:.0%} of the ambiguity limit ±{limit:.0f} Hz: "
+                   "phase wrap is possible, bits are unreliable", near, h.near_limit_share_warn))
     if n >= 3 and np.std(freq) > h.freq_spread_warn_hz:
         r.add(warn("bursts", "FREQ_UNSTABLE",
-                   f"зсув частоти між burst'ами розкиданий (σ={np.std(freq):.0f} Гц): перевірте, "
-                   "чи в записі одне джерело й чи частота не дрейфує",
+                   f"frequency offset is scattered across bursts (sigma={np.std(freq):.0f} Hz): check "
+                   "whether the recording has a single source and the frequency is not drifting",
                    float(np.std(freq)), h.freq_spread_warn_hz))
     return r
 
@@ -332,6 +332,6 @@ def check_patterns(bursts, cfg: PipelineConfig) -> CheckResult:
                 r.metrics[f"pattern_{name}_median_err"] = st.median_err_rate
     if summ.n_bursts and summ.n_any_detected == 0:
         r.add(warn("patterns", "NO_PATTERNS_FOUND",
-                   "жодного з полів TETRA (FCF/NTS1/NTS2/NTS3/STS/ETS/TAIL) не знайдено в "
-                   "жодному burst'і: або це не TETRA, або дуже слабкий сигнал/неправильна демодуляція"))
+                   "none of the TETRA fields (FCF/NTS1/NTS2/NTS3/STS/ETS/TAIL) were found in "
+                   "any burst: either this is not TETRA, or the signal is very weak / demodulation is wrong"))
     return r

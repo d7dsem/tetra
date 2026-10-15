@@ -1,72 +1,58 @@
 """
-Окрема точка входу: готує IQ-запис у форматі, придатному для канального
-декодера osmo-tetra (tetra-rx).
+Готує IQ-запис у форматі для канального декодера osmo-tetra (tetra-rx).
 
-ПРИНЦИПОВА ВІДМІННІСТЬ від tetra_demod.py: tetra-rx сам шукає межі burst'ів
-кореляцією з тренувальними послідовностями у БЕЗПЕРЕРВНОМУ потоці бітів. Тому
-тут демодуляція йде по ВСЬОМУ файлу суцільно, без пошуку/нарізки burst'ів
-(burst_search.py тут НЕ використовується).
+Обидва burst-пошук і по-burst'овий таймінг - ПЕРЕВИКОРИСТАНІ з основного
+пайплайна (burst_search.search_bursts, symbols.estimate_timing), а не
+вигадані заново; перша версія цього модуля оцінювала таймінг один раз на
+весь файл - причину такого підходу (дрейф, втрата синхронізації) підказав
+user, виправлено.
 
-Формат виходу - з реального коду float_to_bits.c (osmo-tetra), не з опису:
-  1 байт = 1 біт, сире значення 0 або 1 (uint8), НЕ ASCII '0'/'1', НЕ запаковано.
-  Таблиця символ -> дібіти (EXACT з їхнього коду):
-    sym=-3 -> (1,1)   sym=-1 -> (1,0)   sym=+1 -> (0,0)   sym=+3 -> (0,1)
-  Прийнято (НЕ підтверджено на реальному tetra-rx): sym = round(phase_deg/45),
-  тобто ±45°/±135° -> {-1,+1}/{-3,+3} - ті самі 4 точки π/4-DQPSK.
+Два СТРУКТУРНІ варіанти розміщення бітів burst'ів (за аналогією з .bin2/.bin3
+з tetra_demod.py, але тут про формат для tetra-rx, не для перегляду):
 
-НЕВИЗНАЧЕНІСТЬ ЗНАКУ ФАЗИ: інверсія Q, буквальна перестановка I/Q і спектральне
-дзеркалення дають ОДНАКОВИЙ ефект на диференціальну фазу (перевірено алгебраїчно,
-зберегти-sign.py чи git log) - це ОДНА вісь невизначеності, не кілька. Тому
-пишемо ОБИДВА варіанти (sign=+1, sign=-1), а не гадаємо.
+  TRUE-TIME (аналог .bin3): кожен burst на СПРАВЖНІЙ позиції в бітовому часі
+    (bit_pos = round(start_sample / sample_rate_hz * 2 * symbol_rate_hz)),
+    проміжки - випадкові біти. ПІДТВЕРДЖЕНО working на реальному tetra-rx
+    (CRC OK на BSCH/AACH/SB1, кілька burst'ів поспіль, зростання FN).
 
-БЕЗПЕРЕРВНА символьна синхронізація: timing-фаза оцінюється ОДИН раз (Oerder-Meyr
-по всьому сигналу), далі семпли беруться з цією фіксованою фазою по всьому файлу.
-Дрейф таймінгу (напр. похибка ppm генератора) тут НЕ компенсується - спрощення
-для першої версії, позначено явно, не прихована.
+  SEQUENTIAL (аналог .bin2): burst'и йдуть ПІДРЯД, кожен доповнений нулями
+    до кратності 510 біт (SLOT_BITS) ПІСЛЯ власного кінця - реальний
+    проміжок часу між burst'ами ІГНОРУЄТЬСЯ. НЕ перевірено на tetra-rx;
+    додано для порівняння на прохання user - чи критичне для декодера
+    точне відтворення реального часу між burst'ами, чи ні.
+
+Формат виходу: 1 байт = 1 біт, сире значення 0/1 (uint8), конвенція
+sym{-3,-1,1,3}->bits - з float_to_bits.c (osmo-tetra), без змін.
+Знак фази (sign=+1 "plus"): ПІДТВЕРДЖЕНО робочим на реальному декодуванні;
+sign=-1 "minus" генерується й надалі для обох режимів, про всяк випадок -
+дешево утримувати, якщо раптом стане в пригоді для іншого запису/налаштувань.
 """
 import argparse
+import os
 
 import numpy as np
-from scipy.signal import resample_poly
 
+import burst_search
 import front_end
+import symbols
 from config import PipelineConfig
 from io_stage import load_iq, probe_input
+from pattern_check import SLOT_BITS
 
-# sym {-3,-1,1,3} -> (bit0,bit1), EXACT з float_to_bits.c (sym_int2bits)
 SYM_TO_BITS = {-3: (1, 1), -1: (1, 0), 1: (0, 0), 3: (0, 1)}
 
 
-def continuous_symbols(y: np.ndarray, sps: int, fine_upsample: int = 4) -> np.ndarray:
-    """Timing-фаза оцінюється ОДНИМ Oerder-Meyr по всьому сигналу (чиста статистика
-    power(y) по фазах n mod sps, не потребує величезного комплексного масиву),
-    далі один прохід resample_poly + вибірка з цією фіксованою фазою по всьому y."""
-    n = len(y)
-    p = y.real.astype(np.float64) ** 2 + y.imag.astype(np.float64) ** 2
-    w = np.exp(-2j * np.pi * np.arange(sps) / sps)
-    m = n // sps * sps
-    c = p[:m].reshape(-1, sps).sum(axis=0) @ w
-    tau = (-np.angle(c) * sps / (2 * np.pi)) % sps
-
-    fine = resample_poly(y, fine_upsample, 1)
-    per_sym = sps * fine_upsample
-    start = int(round(tau * fine_upsample)) % per_sym
-    return fine[start::per_sym]
-
-
 def phase_to_sym(d: np.ndarray, sign: int) -> np.ndarray:
-    """d: диференціальні фазори (одиничної довжини). sign=+1 або -1 - перемикач
-    невизначеності знаку, див. докстрінг модуля."""
     deg = sign * np.degrees(np.angle(d))
     sym = np.round(deg / 45.0).astype(int)
     sym = np.clip(sym, -3, 3)
-    sym = np.where(sym == 0, 1, sym)          # округлення на межі, підстраховка
+    sym = np.where(sym == 0, 1, sym)
     sym = np.where(sym == -2, -1, sym)
     sym = np.where(sym == 2, 1, sym)
     return sym
 
 
-def sym_to_unpacked_bits(sym: np.ndarray) -> np.ndarray:
+def sym_to_bits(sym: np.ndarray) -> np.ndarray:
     bits = np.empty(2 * len(sym), dtype=np.uint8)
     for s, (b0, b1) in SYM_TO_BITS.items():
         mask = sym == s
@@ -75,43 +61,102 @@ def sym_to_unpacked_bits(sym: np.ndarray) -> np.ndarray:
     return bits
 
 
-def export(xw: np.ndarray, cfg: PipelineConfig):
-    """Повертає (bits_sign_plus, bits_sign_minus) - обидва варіанти знаку,
-    кожен np.uint8 масив 0/1, готовий для запису 1-байт-на-біт."""
+def _burst_dibits(y, sr, cfg):
+    """Спільний крок для обох режимів: для кожного burst'а - свіжий таймінг,
+    диференціальна фаза. Повертає список (start_sample, d) по кожному
+    успішно обробленому burst'у, у порядку появи."""
+    out = []
+    for s, e in sr.final:
+        tau = symbols.estimate_timing(y[s:e], cfg.front.sps)
+        sym_iq = symbols.sample_symbols(y, s, e, tau, cfg.front, cfg.timing)
+        if len(sym_iq) < 3:
+            continue
+        d = sym_iq[1:] * np.conj(sym_iq[:-1])
+        d = d / (np.abs(d) + 1e-12)
+        out.append((s, d))
+    return out
+
+
+def export_true_time(xw: np.ndarray, cfg: PipelineConfig, rng: np.random.Generator):
+    """TRUE-TIME (аналог .bin3): burst на справжній позиції в бітовому часі,
+    проміжки - випадкові біти. Повертає (bits_plus, bits_minus, n_ok, n_total)."""
     y = front_end.matched_filter(xw, cfg.front)
-    sym = continuous_symbols(y, cfg.front.sps)
-    d = sym[1:] * np.conj(sym[:-1])
-    d = d / (np.abs(d) + 1e-12)
-    plus = sym_to_unpacked_bits(phase_to_sym(d, +1))
-    minus = sym_to_unpacked_bits(phase_to_sym(d, -1))
-    return plus, minus
+    sr = burst_search.search_bursts(y, cfg.search)
+    bursts = _burst_dibits(y, sr, cfg)
+
+    n_samples = len(xw)
+    total_bits = int(round(n_samples / cfg.front.work_fs_hz * 2 * cfg.front.symbol_rate_hz))
+    out_plus = rng.integers(0, 2, total_bits, dtype=np.uint8)
+    out_minus = rng.integers(0, 2, total_bits, dtype=np.uint8)
+
+    for s, d in bursts:
+        bit_pos = int(round(s / cfg.front.work_fs_hz * 2 * cfg.front.symbol_rate_hz))
+        bp = sym_to_bits(phase_to_sym(d, +1))
+        bm = sym_to_bits(phase_to_sym(d, -1))
+        end = min(bit_pos + len(bp), total_bits)
+        if end <= bit_pos:
+            continue
+        out_plus[bit_pos:end] = bp[:end - bit_pos]
+        out_minus[bit_pos:end] = bm[:end - bit_pos]
+
+    return out_plus, out_minus, len(bursts), len(sr.final)
+
+
+def export_sequential(xw: np.ndarray, cfg: PipelineConfig):
+    """SEQUENTIAL (аналог .bin2): burst'и підряд, кожен доповнений нулями до
+    кратності SLOT_BITS, реальний проміжок часу між ними НЕ відтворюється.
+    Повертає (bits_plus, bits_minus, n_ok, n_total)."""
+    y = front_end.matched_filter(xw, cfg.front)
+    sr = burst_search.search_bursts(y, cfg.search)
+    bursts = _burst_dibits(y, sr, cfg)
+
+    parts_plus, parts_minus = [], []
+    for s, d in bursts:
+        bp = sym_to_bits(phase_to_sym(d, +1))
+        bm = sym_to_bits(phase_to_sym(d, -1))
+        pad = (-len(bp)) % SLOT_BITS
+        if pad:
+            bp = np.concatenate([bp, np.zeros(pad, dtype=np.uint8)])
+            bm = np.concatenate([bm, np.zeros(pad, dtype=np.uint8)])
+        parts_plus.append(bp)
+        parts_minus.append(bm)
+
+    out_plus = np.concatenate(parts_plus) if parts_plus else np.empty(0, dtype=np.uint8)
+    out_minus = np.concatenate(parts_minus) if parts_minus else np.empty(0, dtype=np.uint8)
+    return out_plus, out_minus, len(bursts), len(sr.final)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="Готує .bits-файл(и) для tetra-rx (osmo-tetra), 2 варіанти знаку фази.")
+        description="Prepares .bits files for tetra-rx, both TRUE-TIME (true.*) and "
+                   "SEQUENTIAL (seq.*) burst placement, both phase signs (plus/minus).")
     ap.add_argument("infile")
-    ap.add_argument("--fs", type=float, help="sample rate для raw .cs16")
-    ap.add_argument("-o", "--out", metavar="STEM",
-                    help="stem виходу (STEM.plus.bits, STEM.minus.bits); "
-                         "за замовчуванням ім'я входу без розширення")
+    ap.add_argument("--fs", type=float, help="sample rate for raw .cs16")
+    ap.add_argument("-o", "--out", metavar="STEM")
+    ap.add_argument("--seed", type=int, default=0, help="RNG seed for TRUE-TIME gaps")
     a = ap.parse_args(argv)
 
     cfg = PipelineConfig()
     fs0, n_in = probe_input(a.infile, a.fs)
-    print(f"Вхід: {n_in/fs0:.1f} с, {n_in/1e6:.2f} М відліків @ {fs0:.0f} Гц")
+    print(f"Input: {n_in/fs0:.1f} s, {n_in/1e6:.2f} M samples @ {fs0:.0f} Hz")
 
     fs, x = load_iq(a.infile, a.fs)
     xw = front_end.to_work_rate(x, fs, cfg.front)
-    plus, minus = export(xw, cfg)
+    rng = np.random.default_rng(a.seed)
 
-    import os
+    tp, tm, n_ok, n_total = export_true_time(xw, cfg, rng)
+    print(f"bursts found: {n_total}, successfully processed: {n_ok}")
+    sp, sm, _, _ = export_sequential(xw, cfg)
+
     stem = a.out or os.path.splitext(a.infile)[0]
-    for suffix, bits in (("plus", plus), ("minus", minus)):
+    outputs = (("true.plus", tp), ("true.minus", tm), ("seq.plus", sp), ("seq.minus", sm))
+    for suffix, bits in outputs:
         path = f"{stem}.{suffix}.bits"
         bits.tofile(path)
-        print(f"-> {path}  ({len(bits)} біт, {os.path.getsize(path)} B)")
-    print("\nПеревірте ОБИДВА варіанти на tetra-rx; лишіть той, що дає захват.")
+        print(f"-> {path}  ({len(bits)} bits, {os.path.getsize(path)} B)")
+    print("\nTRUE-TIME (true.*) confirmed working on real tetra-rx (CRC OK, FN tracking).")
+    print("SEQUENTIAL (seq.*) is untested - try it for comparison.")
+    print("Within each, check both plus/minus; plus was already confirmed correct for true.*")
     return 0
 
 

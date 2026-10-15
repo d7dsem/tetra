@@ -155,7 +155,7 @@ class TestCliOutputNames(unittest.TestCase):
     def test_artefacts_section_lists_abs_paths_and_sizes(self):
         with tempfile.TemporaryDirectory() as d:
             out = self._run(d, capture=True)
-            tail = out.split("[ARTEFACTS]\n")[1].split("[ЗВЕДЕННЯ]")[0].splitlines()
+            tail = out.split("[ARTEFACTS]\n")[1].split("[SUMMARY]")[0].splitlines()
             for line, ext in zip(tail, (".txt", ".bin", ".bin2", ".bin3")):
                 path, size = line.strip().rsplit("  ", 1)
                 self.assertEqual(path, os.path.realpath(os.path.join(d, "rec" + ext)))

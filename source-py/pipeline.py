@@ -196,6 +196,6 @@ def run(x: np.ndarray, fs: float, cfg: Optional[PipelineConfig] = None,
 def describe(res: PipelineResult) -> str:
     head = f"[{res.health.status}] "
     if res.search is None:
-        return head + "обробку зупинено до пошуку burst'ів"
+        return head + "processing stopped before burst search"
     return (head + burst_search.describe(res.search)
             + f"  | demod ok={len(res.bursts)} rejected={res.rejected} failed={res.failed}")
