@@ -44,6 +44,8 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from config import CLASSIFY_END_SLACK_BITS, CLASSIFY_START_MAX_BITS, CLASSIFY_START_MIN_BITS
+
 SLOT_BITS = 510              # довжина таймслота в бітах (ETSI, підтверджено: 510 = 255 симв.)
 DETECT_THRESHOLD = 0.10      # базовий тюнінг-параметр: допустимий поріг помилок (10%)
 ALIGN_WINDOW_BITS = 12       # допуск на зсув старту burst'а при пошуку поля, у бітах
@@ -98,34 +100,101 @@ def best_match_for_field(bits_str: str, pattern: str, base_pos: int,
     return best / L if best is not None else None
 
 
-# Типи burst'ів за навчальною послідовністю: назва -> позиція в burst'і (з KNOWN_FIELDS).
-# NTS3 не враховується: позиція в KNOWN_FIELDS невизначена (0).
-BURST_TYPE_FIELDS = ("STS", "NTS1", "NTS2")
+# Типи burst'ів за стандартом: розкладка = довжина, guard перед burst'ом у слоті 510 біт і відомі
+# біти полів (преамбули, FCF, навчальні послідовності, tail). Поле phase adjustment і блоки даних
+# невідомі й не перевіряються. Джерела: EN 300 396-2 V1.4.1 §9.4.3 (DMO: таблиці 14-16, формули
+# (61)-(68)), EN 300 392-2 V3.8.1 §9.4.4 (TMO: таблиці 9.2-9.12, формули 9.4-9.12).
+# Зсув - 0-based від першого біта burst'а (BN-1). Навчальна послідовність - якір положення.
+@dataclass(frozen=True)
+class BurstLayout:
+    name: str
+    length: int                           # довжина burst'а, біт
+    guard_before: int                     # біти слота перед burst'ом (решта - guard після)
+    fields: Tuple[Tuple[int, str], ...]   # (зсув, відомі біти)
+    anchor: int                           # індекс навчальної послідовності у fields
+
+
+_P1 = "001100100011"          # DMO preamble P1 (61): з NTS1, TCH або SCH/F
+_P2 = "100110101001"          # DMO preamble P2 (62): з NTS2, STCH+TCH або STCH+STCH
+_P3 = "000101000111"          # DMO synchronization preamble P3 (65): з STS
+_Q = KNOWN_FIELDS["NTS3"][0]  # TMO NTS3 q1..q22: його частини на краях downlink burst'ів
+_NTS = {"1": KNOWN_FIELDS["NTS1"][0], "2": KNOWN_FIELDS["NTS2"][0]}
+_STS, _ETS, _FCF = (KNOWN_FIELDS[k][0] for k in ("STS", "ETS", "FCF"))
+_TAIL_TMO = "1100"            # (9.12); у DMO tail "00" (68)
+
+
+def _layouts() -> Tuple[BurstLayout, ...]:
+    out = [BurstLayout("DSB", 470, 34, ((0, _P3), (14, _FCF), (214, _STS), (468, "00")), 2)]
+    for k in "12":
+        out.append(BurstLayout("DNB" + k, 470, 34, ((0, _P1 if k == "1" else _P2), (230, _NTS[k]), (468, "00")), 1))
+    out.append(BurstLayout("SBc", 510, 0, ((0, _Q[10:]), (14, _FCF), (214, _STS), (500, _Q[:10])), 2))
+    out.append(BurstLayout("SBd", 492, 10, ((0, _Q[20:]), (4, _FCF), (204, _STS), (490, _Q[:2])), 2))
+    for k in "12":
+        out.append(BurstLayout("NDBc" + k, 510, 0, ((0, _Q[10:]), (244, _NTS[k]), (500, _Q[:10])), 1))
+        out.append(BurstLayout("NDBd" + k, 492, 10, ((0, _Q[20:]), (234, _NTS[k]), (490, _Q[:2])), 1))
+        out.append(BurstLayout("NUB" + k, 462, 34, ((0, _TAIL_TMO), (220, _NTS[k]), (458, _TAIL_TMO)), 1))
+    out.append(BurstLayout("CB", 206, 34, ((0, _TAIL_TMO), (88, _ETS), (202, _TAIL_TMO)), 1))
+    return tuple(out)
+
+
+BURST_LAYOUTS: Tuple[BurstLayout, ...] = _layouts()
+BURST_LAYOUT_BY_NAME = {l.name: l for l in BURST_LAYOUTS}
 BURST_TYPE_NONE = "-"
 
 
-def locate_training(bits, threshold: float = DETECT_THRESHOLD) -> Tuple[str, Optional[int]]:
-    """(тип, позиція в бітах) за навчальною послідовністю в першому слоті: послідовність
-    з найменшою часткою помилок (<= threshold) у вікні ±ALIGN_WINDOW_BITS навколо її
-    позиції; (BURST_TYPE_NONE, None), якщо жодної."""
+@dataclass(frozen=True)
+class BurstMatch:
+    layout: Optional[BurstLayout]
+    start: Optional[int]          # положення першого біта burst'а в bits (може бути від'ємним)
+
+    @property
+    def name(self) -> str:
+        return self.layout.name if self.layout else BURST_TYPE_NONE
+
+
+def _match_at(s: str, layout: BurstLayout, start: int, threshold: float, end_slack: int):
+    """(помилки, перевірено біт) для розкладки з початком у start; None, якщо не збігається.
+    Кожне поле має вкластися в допуск threshold, якір має бути перевірений повністю."""
+    n = len(s)
+    if layout.length - (n - start) > end_slack:
+        return None
+    errs = total = 0
+    for idx, (off, pat) in enumerate(layout.fields):
+        a, b = start + off, start + off + len(pat)
+        if a < 0 or b > n:
+            if idx == layout.anchor:
+                return None
+            continue
+        e = sum(x != y for x, y in zip(s[a:b], pat))
+        if e > int(threshold * len(pat)):
+            return None
+        errs += e
+        total += len(pat)
+    return errs, total
+
+
+def classify_burst(bits, threshold: float = DETECT_THRESHOLD, start_min: int = CLASSIFY_START_MIN_BITS,
+                   start_max: int = CLASSIFY_START_MAX_BITS, end_slack: int = CLASSIFY_END_SLACK_BITS) -> BurstMatch:
+    """Тип burst'а за стандартом: розкладка з BURST_LAYOUTS, у якій усі відомі поля (преамбула,
+    навчальна послідовність, tail, FCF) збігаються в межах threshold при початку burst'а в
+    start_min..start_max; найменша частка помилок, за рівності - більше перевірених біт.
+    Перевіряється лише перший слот. Нічого не знайдено - BurstMatch(None, None)."""
     s = _bits_to_str(bits)
-    best = (BURST_TYPE_NONE, None)
-    best_err = None
-    for name in BURST_TYPE_FIELDS:
-        pattern, pos, _ = KNOWN_FIELDS[name]
-        L = len(pattern)
-        for p in range(max(0, pos - ALIGN_WINDOW_BITS), pos + ALIGN_WINDOW_BITS + 1):
-            if p + L > len(s):
-                break
-            err = sum(a != c for a, c in zip(s[p:p + L], pattern))
-            if err <= threshold * L and (best_err is None or err / L < best_err):
-                best, best_err = (name, p), err / L
+    best, best_key = BurstMatch(None, None), None
+    for layout in BURST_LAYOUTS:
+        for start in range(start_min, start_max + 1):
+            r = _match_at(s, layout, start, threshold, end_slack)
+            if r is None:
+                continue
+            key = (r[0] / r[1], -r[1])
+            if best_key is None or key < best_key:
+                best, best_key = BurstMatch(layout, start), key
     return best
 
 
 def burst_type(bits, threshold: float = DETECT_THRESHOLD) -> str:
-    """Тип burst'а за навчальною послідовністю, див. locate_training."""
-    return locate_training(bits, threshold)[0]
+    """Назва типу burst'а за стандартом (DSB, DNB1, DNB2, SBc, SBd, NDBc1.., NUB1.., CB) або '-'."""
+    return classify_burst(bits, threshold).name
 
 
 @dataclass
