@@ -70,7 +70,7 @@ def run_rational(data_raw, w, fs_in: int, up: int, down: int, shift_hz: float):
     """Чанки з перекриттям: край чанка обробляється з запасом pad, який потім відкидається."""
     total = data_raw.shape[0]
     half_len = POLY_HALF_LEN_FACTOR * max(up, down)
-    h = firwin(2 * half_len + 1, FIR_CUTOFF_FRAC / max(up, down), window=POLY_WINDOW) * up
+    h = firwin(2 * half_len + 1, FIR_CUTOFF_FRAC / max(up, down), window=POLY_WINDOW)
 
     # pad і розмір чанка кратні down -> фаза виходу збігається між чанками
     pad = math.ceil(math.ceil(half_len / up) / down) * down
