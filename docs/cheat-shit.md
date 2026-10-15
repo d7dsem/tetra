@@ -119,6 +119,38 @@ t_start_s  start_sample  n_samples  n_bits  n_sym  snr_db  freq_hz  coherence  p
 | 11 | bits | демодульовані біти (2/символ), БЕЗ канального декодування |
 
 
+# Декодування DMO (dmo_rx)
+
+Нові вихідні файли `tetra_demod` (додатково до `out.bin`, `out.bin2`, `out.bin3`):
+
+```
+out.bin4  - слот (510 біт) на burst, burst вирівняно за типом за стандартом: поля в колонках
+            стандарту (для перегляду, ширина 510)
+out.bits, out.bits2, out.bits3, out.bits4
+          - ті самі біти, що .bin, .bin2, .bin3, .bin4, але ОДИН БІТ У БАЙТІ (0/1), без упаковки,
+            `-e` на них не діє; це вхід dmo_rx
+```
+
+NOTE: `-e` тепер за замовчуванням `BE` (перший біт у старшому розряді байта); стосується лише
+упакованих `.bin*`. У `out.txt` додано колонку `type` перед `flags` (DSB, DNB1, DNB2, ... або `-`).
+
+```bash
+# зібрати один раз: потрібні clang, libosmocore, сирці osmo-tetra в ~/Public/repos/osmo-tetra/src
+cd ~/Public/repos/tetra
+scripts/deploy.sh -m release -t dmo_rx        # -> bin/dmo_rx (debug: -m debug -> wd/)
+
+# запуск: вхід - файл бітів, один біт у байті
+tetra_demod in.wav -o out
+bin/dmo_rx out.bits4
+bin/dmo_rx out.bits4 -v                       # додає перевірку tail
+```
+
+Вихід: рядок на кожен знайдений DSB (зсув, `SCH/S crc=OK|FAIL type1=...`, `SCH/H crc=...`),
+у кінці `candidates=N SCH/S_crc_ok=N SCH/H_crc_ok=N`. Коди виходу: 0, 1 (помилка), 2 (аргументи).
+STS шукається точним збігом, декодуються лише DSB (DNB, тобто голос, ще ні).
+Вимоги до входів - у `README.md`, розділ "Вимоги до входу".
+
+
 # Діагностика
 
 ```bash
