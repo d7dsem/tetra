@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Обгортка для op-core/tools/capt-wav-proc/tetra_prep.py (шлях відносно bin/).
+here="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+exec python3 "$here/../source-py/wav-proc/tetra_prep.py" "$@"
