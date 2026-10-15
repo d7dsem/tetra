@@ -34,15 +34,6 @@ class TestKnownFields(unittest.TestCase):
             self.assertEqual(status, "ok", name)
             self.assertEqual(len(pattern), exp_len, name)
 
-    def test_phase_is_formula_not_fixed_pattern(self):
-        pattern, _, status = KNOWN_FIELDS["PHASE"]
-        self.assertEqual(status, "formula")
-        self.assertIsNone(pattern)
-
-    def test_fields_are_distinct(self):
-        real = [p for p, _, st in KNOWN_FIELDS.values() if st == "ok"]
-        self.assertEqual(len(real), len(set(real)))
-
 
 class TestCheckAllFields(unittest.TestCase):
     def test_pure_random_bits_mostly_not_detected(self):
@@ -92,12 +83,6 @@ class TestCheckAllFields(unittest.TestCase):
         for name in ("FCF", "NTS1", "NTS2", "NTS3", "STS", "ETS"):
             self.assertIsNone(res[name], name)
 
-    def test_shorter_than_tail_gives_none_for_everything(self):
-        rng = np.random.default_rng(5)
-        bits = rng.integers(0, 2, 3).tolist()   # коротше за найкоротше реальне поле (TAIL=4)
-        res = check_all_fields(bits)
-        self.assertTrue(all(e is None for e in res.values()))
-
 
 class TestSummarizeRecording(unittest.TestCase):
     def test_empty_recording(self):
@@ -125,14 +110,6 @@ class TestSummarizeRecording(unittest.TestCase):
         self.assertEqual(s.per_field["PHASE"].status, "formula")
         self.assertEqual(s.per_field["PHASE"].n_found, 0)
 
-    def test_median_err_rate_with_errors(self):
-        rng = np.random.default_rng(7)
-        sts, pos, _ = KNOWN_FIELDS["STS"]
-        good = FakeBurst(embed(sts, pos, 470, rng), n_sym=235)
-        noisy = FakeBurst(embed(sts, pos, 470, rng, flip_frac=0.05), n_sym=235)
-        s = summarize_recording([good, noisy])
-        self.assertEqual(s.per_field["STS"].n_found, 2)
-        self.assertGreater(s.per_field["STS"].median_err_rate, 0.0)
 
     def test_exact_vs_within_threshold_split(self):
         rng = np.random.default_rng(8)

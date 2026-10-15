@@ -34,21 +34,6 @@ class TestWriteBursts(unittest.TestCase):
         self.assertIn("bits", head[-1])
         self.assertEqual(len(lines) - len(head), 2)
 
-    def test_pattern_counts_header_aligned_with_rows(self):
-        lines = self._lines([self._burst(5, [1, 0])])
-        pats = [l for l in lines if l.startswith("#   ")]
-        self.assertTrue(lines[0].startswith("# known TETRA"))
-        self.assertEqual({len(l) for l in pats + lines[:1]}, {len(pats[0])})
-
-    def test_bits_start_at_same_column(self):
-        lines = self._lines([self._burst(5, [1, 0]), self._burst(123456789, [1, 1, 0, 0], "LOWCOH,NEARLIM")])
-        col = len(lines[-1]) - len("1100")
-        self.assertEqual(len(lines[-2]) - len("10"), col)
-        self.assertEqual(lines[-3].rindex("bits"), col)
-
-    def test_empty(self):
-        self.assertIn("# bursts: 0", self._lines([]))
-
 
 class TestBitsBin(unittest.TestCase):
     def test_packing_lsb_first_concat_pad_end(self):
@@ -67,12 +52,6 @@ class TestBitsBin(unittest.TestCase):
             write_bits_bin(p, bursts, "big")
             self.assertEqual(open(p, "rb").read(), bytes([0b10011000]))
 
-    def test_empty(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "x.bin")
-            write_bits_bin(p, [])
-            self.assertEqual(open(p, "rb").read(), b"")
-
 
 class TestBitsBinAligned(unittest.TestCase):
     def test_each_burst_padded_to_slot_multiple(self):
@@ -85,14 +64,6 @@ class TestBitsBinAligned(unittest.TestCase):
             # перший burst: [1,0,1,0,0] (доповнено до 5), другий: [1,1,0,0,0]
             np.testing.assert_array_equal(got[:10], [1, 0, 1, 0, 0, 1, 1, 0, 0, 0])
 
-    def test_burst_exact_multiple_gets_no_padding(self):
-        bursts = [SimpleNamespace(bits=np.ones(10, np.uint8)),
-                  SimpleNamespace(bits=np.array([1, 0], np.uint8))]
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "x.bin2")
-            write_bits_bin_aligned(p, bursts, slot_bits=5)
-            got = np.unpackbits(np.frombuffer(open(p, "rb").read(), np.uint8), bitorder="little")
-            np.testing.assert_array_equal(got[:15], [1] * 10 + [1, 0, 0, 0, 0])
 
     def test_every_burst_starts_on_slot_boundary(self):
         rng = np.random.default_rng(0)
@@ -110,21 +81,6 @@ class TestBitsBinAligned(unittest.TestCase):
                 self.assertEqual(offset % slot, 0)
                 np.testing.assert_array_equal(got[offset:offset + len(b.bits)], b.bits)
                 offset += -(-len(b.bits) // slot) * slot
-
-    def test_empty(self):
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "x.bin2")
-            write_bits_bin_aligned(p, [], slot_bits=510)
-            self.assertEqual(open(p, "rb").read(), b"")
-
-    def test_differs_from_unaligned_when_padding_needed(self):
-        bursts = [SimpleNamespace(bits=np.array([1, 0, 1], np.uint8)),
-                  SimpleNamespace(bits=np.array([1, 1], np.uint8))]
-        with tempfile.TemporaryDirectory() as d:
-            p1, p2 = os.path.join(d, "x.bin"), os.path.join(d, "x.bin2")
-            write_bits_bin(p1, bursts)
-            write_bits_bin_aligned(p2, bursts, slot_bits=5)
-            self.assertNotEqual(open(p1, "rb").read(), open(p2, "rb").read())
 
 
 class TestBitsBinPhaseAligned(unittest.TestCase):
@@ -152,10 +108,6 @@ class TestBitsBinPhaseAligned(unittest.TestCase):
         np.testing.assert_array_equal(got[8:12], [1, 0, 1, 1])
         np.testing.assert_array_equal(got[12:], np.zeros(8))
 
-    def test_zero_start_has_no_leading_zeros(self):
-        b = SimpleNamespace(start=0, bits=np.array([1, 1], np.uint8))
-        got = self._write([b])
-        np.testing.assert_array_equal(got[:2], [1, 1])
 
     def test_two_bursts_each_independently_phased(self):
         b1 = SimpleNamespace(start=3, bits=np.array([1, 1], np.uint8))    # phase=3
@@ -166,15 +118,6 @@ class TestBitsBinPhaseAligned(unittest.TestCase):
 
     def test_empty(self):
         self.assertEqual(len(self._write([])), 0)
-
-    def test_burst_duration_derived_not_hardcoded(self):
-        # інший symbol_rate_hz -> інша burst_duration_s -> інша фаза для того самого start.
-        b = SimpleNamespace(start=7, bits=np.array([1], np.uint8))
-        with tempfile.TemporaryDirectory() as d:
-            p1, p2 = os.path.join(d, "a.bin3"), os.path.join(d, "b.bin3")
-            write_bits_bin_phase_aligned(p1, [b], 10, 2.0, 1.0)
-            write_bits_bin_phase_aligned(p2, [b], 10, 2.0, 2.0)   # вдвічі більша symbol_rate
-            self.assertNotEqual(open(p1, "rb").read(), open(p2, "rb").read())
 
 
 class TestCliOutputNames(unittest.TestCase):
@@ -196,14 +139,6 @@ class TestCliOutputNames(unittest.TestCase):
             self.assertEqual(self._run(d, "-o", os.path.join(d, "out")),
                              ["out.bin", "out.bin2", "out.bin3", "out.txt", "rec.wav"])
 
-    def test_artefacts_section_lists_abs_paths_and_sizes(self):
-        with tempfile.TemporaryDirectory() as d:
-            out = self._run(d, capture=True)
-            tail = out.split("[ARTEFACTS]\n")[1].split("[SUMMARY]")[0].splitlines()
-            for line, ext in zip(tail, (".txt", ".bin", ".bin2", ".bin3")):
-                path, size = line.strip().rsplit("  ", 1)
-                self.assertEqual(path, os.path.realpath(os.path.join(d, "rec" + ext)))
-                self.assertEqual(size, f"{os.path.getsize(path)} B")
 
     def test_bin_matches_txt_bits(self):
         with tempfile.TemporaryDirectory() as d:

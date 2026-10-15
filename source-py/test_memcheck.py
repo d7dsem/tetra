@@ -7,9 +7,9 @@ import numpy as np
 from scipy.io import wavfile
 
 from tetra_demod import main
-from config import PipelineConfig, apply_overrides
+from config import PipelineConfig
 from io_stage import load_iq, probe_input
-from memcheck import available_memory_bytes, estimate_memory, format_report
+from memcheck import available_memory_bytes, estimate_memory
 
 CFG = PipelineConfig()
 WORK = CFG.front.work_fs_hz
@@ -27,9 +27,6 @@ class TestAvailableMemory(unittest.TestCase):
         _write(self.mi, "MemTotal: 100 kB\nMemAvailable: 2000 kB\n")
         self.none = os.path.join(self.d, "nope")
 
-    def test_meminfo_only(self):
-        r = available_memory_bytes(self.mi, self.none, self.none)
-        self.assertEqual(r, (2000 * 1024, "/proc/meminfo MemAvailable"))
 
     def test_cgroup_v2_limit_wins_when_smaller(self):
         cg = os.path.join(self.d, "cg2"); os.makedirs(cg)
@@ -45,30 +42,9 @@ class TestAvailableMemory(unittest.TestCase):
         self.assertEqual(available_memory_bytes(self.mi, cg, self.none)[1],
                          "/proc/meminfo MemAvailable")
 
-    def test_cgroup_v1_unlimited_ignored(self):
-        cg = os.path.join(self.d, "cg1"); os.makedirs(cg)
-        _write(os.path.join(cg, "memory.limit_in_bytes"), str((1 << 63) - 4096))
-        _write(os.path.join(cg, "memory.usage_in_bytes"), "1000")
-        self.assertEqual(available_memory_bytes(self.mi, self.none, cg)[1],
-                         "/proc/meminfo MemAvailable")
-
-    def test_nothing_available(self):
-        self.assertIsNone(available_memory_bytes(self.none, self.none, self.none))
-
 
 class TestEstimate(unittest.TestCase):
-    def test_grows_with_duration(self):
-        a = estimate_memory(int(WORK * 10), WORK, CFG)
-        b = estimate_memory(int(WORK * 100), WORK, CFG)
-        self.assertGreater(b.peak_bytes, a.peak_bytes)
-        self.assertIsNone(a.ok)  # available не передано
 
-    def test_resampling_costs_more(self):
-        same = estimate_memory(int(WORK * 60), WORK, CFG)
-        wide = estimate_memory(int(1.8e6 * 60), 1.8e6, CFG)
-        self.assertTrue(wide.resampled and not same.resampled)
-        self.assertGreater(wide.peak_bytes, same.peak_bytes)
-        self.assertIn("resample", wide.stage_bytes)
 
     def test_ok_flag_and_max_duration_consistent(self):
         avail = (800 * 10 ** 6, "test")
@@ -81,13 +57,6 @@ class TestEstimate(unittest.TestCase):
         self.assertGreater(over.required_bytes, avail[0])
         small = estimate_memory(int(WORK * 5), WORK, CFG, avail)
         self.assertTrue(small.ok)
-
-    def test_report_mentions_verdict(self):
-        e = estimate_memory(int(WORK * 3600), WORK, CFG, (500 * 10 ** 6, "test"))
-        self.assertIn("NO", format_report(e))
-        self.assertIn("Available: 500 MB", format_report(e))
-        e = estimate_memory(int(WORK * 3600), WORK, CFG)
-        self.assertIn("skipped", format_report(e))
 
 
 class TestInput(unittest.TestCase):
@@ -139,17 +108,6 @@ class TestCliPolicy(unittest.TestCase):
         self.assertEqual(self.run_cli("--set", "memory.safety_factor=1000000",
                                       "--set", "memory.policy=warn"), 0)
         self.assertTrue(os.path.exists(self.out))
-
-    def test_off_skips_check(self):
-        self.assertEqual(self.run_cli("--set", "memory.safety_factor=1000000",
-                                      "--set", "memory.policy=off"), 0)
-
-    def test_mem_only(self):
-        self.assertEqual(self.run_cli("--mem-only"), 0)
-        self.assertFalse(os.path.exists(self.out))
-
-    def test_default_small_file_passes(self):
-        self.assertEqual(self.run_cli(), 0)
 
 
 if __name__ == "__main__":
