@@ -104,18 +104,28 @@ BURST_TYPE_FIELDS = ("STS", "NTS1", "NTS2")
 BURST_TYPE_NONE = "-"
 
 
-def burst_type(bits, threshold: float = DETECT_THRESHOLD) -> str:
-    """Тип burst'а за навчальною послідовністю в першому слоті: назва послідовності
-    з найменшою часткою помилок (<= threshold) у вікні ±ALIGN_WINDOW_BITS навколо
-    її позиції, або BURST_TYPE_NONE."""
+def locate_training(bits, threshold: float = DETECT_THRESHOLD) -> Tuple[str, Optional[int]]:
+    """(тип, позиція в бітах) за навчальною послідовністю в першому слоті: послідовність
+    з найменшою часткою помилок (<= threshold) у вікні ±ALIGN_WINDOW_BITS навколо її
+    позиції; (BURST_TYPE_NONE, None), якщо жодної."""
     s = _bits_to_str(bits)
-    best_name, best_rate = BURST_TYPE_NONE, None
+    best = (BURST_TYPE_NONE, None)
+    best_err = None
     for name in BURST_TYPE_FIELDS:
         pattern, pos, _ = KNOWN_FIELDS[name]
-        rate = best_match_for_field(s[:pos + len(pattern) + ALIGN_WINDOW_BITS], pattern, pos)
-        if rate is not None and rate <= threshold and (best_rate is None or rate < best_rate):
-            best_name, best_rate = name, rate
-    return best_name
+        L = len(pattern)
+        for p in range(max(0, pos - ALIGN_WINDOW_BITS), pos + ALIGN_WINDOW_BITS + 1):
+            if p + L > len(s):
+                break
+            err = sum(a != c for a, c in zip(s[p:p + L], pattern))
+            if err <= threshold * L and (best_err is None or err / L < best_err):
+                best, best_err = (name, p), err / L
+    return best
+
+
+def burst_type(bits, threshold: float = DETECT_THRESHOLD) -> str:
+    """Тип burst'а за навчальною послідовністю, див. locate_training."""
+    return locate_training(bits, threshold)[0]
 
 
 @dataclass

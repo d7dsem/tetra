@@ -9,6 +9,8 @@
   write_bits_bin_phase_aligned() точніше: burst доповнюється нулями З ОБОХ боків
                           на його СПРАВЖНЮ фазу всередині слота (з start_sample),
                           а не просто зшивається після попереднього - для bit viewer'а
+  write_bits_bin_structured() .bin4: один слот (510 біт) на burst, burst вирівняно за
+                          навчальною послідовністю так, що поля стоять у колонках стандарту
 Формат рядка: t_start_s start_sample n_samples n_bits n_sym snr_db freq_hz coherence phase_rms_deg type flags bits
 (start_sample, n_samples: позиція і довжина burst'а в СИРИХ семплах, work_fs_hz Гц -
  ті самі індекси, що й у вхідному масиві ДО matched filter, для дослідження сирого запису)
@@ -19,7 +21,10 @@
 import numpy as np
 from scipy.io import wavfile
 
-from pattern_check import KNOWN_FIELDS, burst_type, summarize_recording
+from config import (BIN4_BURST_BITS, BIN4_DEFAULT_START_EXCESS_BITS, BIN4_GUARD_BEFORE_BITS,
+                    BIN4_SLOT_TOLERANCE_BITS, BIN4_TS_OFFSET_BITS)
+from pattern_check import (BURST_TYPE_NONE, KNOWN_FIELDS, SLOT_BITS, burst_type, locate_training,
+                           summarize_recording)
 
 
 def _open_int16_iq(path: str, fs_hint=None):
@@ -154,3 +159,41 @@ def write_bits_bin_aligned(path: str, bursts, slot_bits: int,
     stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
     with open(path, "wb") as f:
         f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+
+
+def _structured_slots(bits) -> tuple:
+    """Рядки слотів (n, 510) для одного burst'а і ознака, що навчальної послідовності
+    не знайдено. Початок справжнього burst'а s = позиція послідовності - її зсув у burst'і
+    (BIN4_TS_OFFSET_BITS); без послідовності s = BIN4_DEFAULT_START_EXCESS_BITS.
+    Безперервна серія слотів (слоти йдуть через SLOT_BITS) дає по рядку на слот."""
+    bits = np.asarray(bits, dtype=np.uint8)
+    n = len(bits)
+    name, pos = locate_training(bits)
+    found = name != BURST_TYPE_NONE
+    s = pos - BIN4_TS_OFFSET_BITS[name] if found else BIN4_DEFAULT_START_EXCESS_BITS
+    n_slots = 1 + max(0, n - s - BIN4_BURST_BITS + BIN4_SLOT_TOLERANCE_BITS) // SLOT_BITS
+    slots = np.zeros((n_slots, SLOT_BITS), dtype=np.uint8)
+    for k in range(n_slots):
+        a = s + k * SLOT_BITS
+        lo, hi = max(a, 0), min(a + BIN4_BURST_BITS, n)
+        if hi > lo:
+            slots[k, BIN4_GUARD_BEFORE_BITS + lo - a:BIN4_GUARD_BEFORE_BITS + hi - a] = bits[lo:hi]
+    return slots, not found
+
+
+def write_bits_bin_structured(path: str, bursts, bitorder: str = "little") -> tuple:
+    """.bin4: кожен burst - окремий слот по SLOT_BITS біт, burst (BIN4_BURST_BITS біт за
+    стандартом) вирівняно за навчальною послідовністю і покладено після BIN4_GUARD_BEFORE_BITS
+    нулів, тож поля всіх burst'ів стоять в одних колонках. Біти поза стандартним burst'ом
+    (захоплена рампа) відкидаються, бракуючі доповнюються нулями. Положення в записі не
+    зберігається (як у .bin2, на відміну від .bin3).
+    Повертає (кількість рядків, кількість burst'ів без навчальної послідовності)."""
+    parts, n_unanchored = [], 0
+    for b in bursts:
+        slots, unanchored = _structured_slots(b.bits)
+        parts.append(slots.reshape(-1))
+        n_unanchored += unanchored
+    stream = np.concatenate(parts) if parts else np.empty(0, dtype=np.uint8)
+    with open(path, "wb") as f:
+        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+    return len(stream) // SLOT_BITS, n_unanchored

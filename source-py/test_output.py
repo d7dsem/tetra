@@ -8,7 +8,9 @@ from types import SimpleNamespace
 import numpy as np
 from scipy.io import wavfile
 
-from io_stage import write_bits_bin, write_bits_bin_aligned, write_bits_bin_phase_aligned, write_bursts
+from io_stage import (write_bits_bin, write_bits_bin_aligned, write_bits_bin_phase_aligned,
+                      write_bits_bin_structured, write_bursts)
+from pattern_check import KNOWN_FIELDS
 from synth import make_signal
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -120,6 +122,46 @@ class TestBitsBinPhaseAligned(unittest.TestCase):
         self.assertEqual(len(self._write([])), 0)
 
 
+class TestBitsBinStructured(unittest.TestCase):
+    """.bin4: один слот на burst, поля у колонках стандарту незалежно від зсуву захоплення."""
+    STS_COL = 34 + 214          # guard 34 + зсув STS у burst'і (таблиця 16 EN 300 396-2)
+
+    def _burst_470(self, seed=0):
+        bits = np.random.default_rng(seed).integers(0, 2, 470).astype(np.uint8)
+        bits[214:252] = [int(c) for c in KNOWN_FIELDS["STS"][0]]
+        return bits
+
+    def _rows(self, bits_list):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "x.bin4")
+            n_rows, n_unanchored = write_bits_bin_structured(
+                p, [SimpleNamespace(bits=b) for b in bits_list])
+            raw = np.unpackbits(np.fromfile(p, dtype=np.uint8), bitorder="little")
+        return raw[:n_rows * 510].reshape(n_rows, 510), n_unanchored
+
+    def test_capture_offset_does_not_move_fields(self):
+        core = self._burst_470()
+        rng = np.random.default_rng(5)
+        captures = [np.concatenate([rng.integers(0, 2, pre).astype(np.uint8), core, rng.integers(0, 2, post).astype(np.uint8)])
+                    for pre, post in ((2, 0), (4, 0), (6, 2), (8, 4))]
+        rows, unanchored = self._rows(captures)
+        self.assertEqual(unanchored, 0)
+        for r in rows:
+            self.assertTrue((r[:34] == 0).all() and (r[504:] == 0).all())
+            self.assertEqual(r[self.STS_COL:self.STS_COL + 38].tolist(), core[214:252].tolist())
+            self.assertEqual(r[34:504].tolist(), core.tolist())
+
+    def test_continuous_slots_split_into_rows(self):
+        core = self._burst_470()
+        stream = np.zeros(4 + 2 * 510 + 470, dtype=np.uint8)
+        for k in range(3):
+            stream[4 + 510 * k:4 + 510 * k + 470] = core
+        rows, _ = self._rows([stream])
+        self.assertEqual(len(rows), 3)
+        for r in rows:
+            self.assertEqual(r[34:504].tolist(), core.tolist())
+
+
 class TestCliOutputNames(unittest.TestCase):
     def _run(self, d, *extra, capture=False):
         x, _ = make_signal(np.random.default_rng(1))
@@ -132,12 +174,12 @@ class TestCliOutputNames(unittest.TestCase):
 
     def test_default_stem_from_input(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._run(d), ["rec.bin", "rec.bin2", "rec.bin3", "rec.txt", "rec.wav"])
+            self.assertEqual(self._run(d), ["rec.bin", "rec.bin2", "rec.bin3", "rec.bin4", "rec.txt", "rec.wav"])
 
     def test_o_is_stem(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(self._run(d, "-o", os.path.join(d, "out")),
-                             ["out.bin", "out.bin2", "out.bin3", "out.txt", "rec.wav"])
+                             ["out.bin", "out.bin2", "out.bin3", "out.bin4", "out.txt", "rec.wav"])
 
 
     def test_bin_matches_txt_bits(self):

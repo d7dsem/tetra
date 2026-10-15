@@ -48,6 +48,15 @@ FREQ_CORRECTION_ENABLED = True
 # ПЕРЕВІРИТИ за ETSI EN 300 392-2
 DIBIT_BY_QUADRANT = ((0, 0), (0, 1), (1, 1), (1, 0))
 
+# --- Структурне подання .bin4 (io_stage.py, pattern_check.py) ---------
+# Розкладка слота за ETSI EN 300 396-2, таблиці 14-16 (dmo/docs/dmo-phy-spec.md):
+# 34 біти guard/ramp, burst 470 біт, решта слота (6 біт) - guard.
+BIN4_BURST_BITS = 470
+BIN4_GUARD_BEFORE_BITS = 34
+BIN4_TS_OFFSET_BITS = {"STS": 214, "NTS1": 230, "NTS2": 230}   # початок навчальної послідовності в burst'і
+BIN4_DEFAULT_START_EXCESS_BITS = 4    # без навчальної послідовності: типовий зайвий початок захоплення (медіана на записі 1_)
+BIN4_SLOT_TOLERANCE_BITS = 20         # скільки бракуючих бітів у кінці ще дозволяє вважати слот наявним
+
 # --- Контроль якості burst'а (demod.py) -------------------------------
 QUALITY_MIN_COHERENCE = 0.0   # 0 = нічого не відкидати; 0..1
 
