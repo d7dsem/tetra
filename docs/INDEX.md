@@ -35,18 +35,18 @@ IQ (.wav 2ch int16 / .cs16)
 
 ## 3. Етапи пайплайна (порядок = `pipeline.run`, `source-py/pipeline.py`)
 
-| # | Етап | Модуль / функція |
-|---|---|---|
-| 0 | перевірка fs, довжини | `checks.check_meta` |
-| 1 | NaN/Inf | `checks.sanitize`, `checks.check_nonfinite` |
-| 2 | рівні, кліппінг | `checks.check_levels` |
-| A | ресемплінг до work fs = 72 кГц (SPS=4) | `front_end.to_work_rate` |
-| 3 | спектр (до matched filter) | `checks.check_spectrum` |
-| - | RRC matched filter (rolloff 0.35, 12 символів) | `front_end.matched_filter` (альтернатива: `pipeline._coarse_matched_filter`, `config.COARSE_ENABLED=False`) |
-| B | **пошук меж burst'ів** | `burst_search.search_bursts` |
-| 4 | активність | `checks.check_activity` |
-| C-D | по кожному burst'у: таймінг, символи, диф. демодуляція, частота, якість, біти, SNR, прапорці | `pipeline.demod_burst` |
-| 5 | підсумкові перевірки | `checks.check_bursts`, `checks.check_patterns` |
+| #   | Етап                                                                                         | Модуль / функція                                                                                            |
+| --- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 0   | перевірка fs, довжини                                                                        | `checks.check_meta`                                                                                         |
+| 1   | NaN/Inf                                                                                      | `checks.sanitize`, `checks.check_nonfinite`                                                                 |
+| 2   | рівні, кліппінг                                                                              | `checks.check_levels`                                                                                       |
+| A   | ресемплінг до work fs = 72 кГц (SPS=4)                                                       | `front_end.to_work_rate`                                                                                    |
+| 3   | спектр (до matched filter)                                                                   | `checks.check_spectrum`                                                                                     |
+| -   | RRC matched filter (rolloff 0.35, 12 символів)                                               | `front_end.matched_filter` (альтернатива: `pipeline._coarse_matched_filter`, `config.COARSE_ENABLED=False`) |
+| B   | **пошук меж burst'ів**                                                                       | `burst_search.search_bursts`                                                                                |
+| 4   | активність                                                                                   | `checks.check_activity`                                                                                     |
+| C-D | по кожному burst'у: таймінг, символи, диф. демодуляція, частота, якість, біти, SNR, прапорці | `pipeline.demod_burst`                                                                                      |
+| 5   | підсумкові перевірки                                                                         | `checks.check_bursts`, `checks.check_patterns`                                                              |
 
 Кожен етап обгорнуто `pipeline._guard`: виняток -> `Finding` fatal ERROR (не падіння), якщо не `health.reraise`.
 
@@ -111,36 +111,38 @@ IQ (.wav 2ch int16 / .cs16)
 
 ## 5. Збірка
 
-| Що | Як |
-|---|---|
-| Python | збірки немає; запуск `./bin/tetra_demod in.wav -o out`; потрібні python3, numpy, scipy, matplotlib |
-| Тести Python | `cd source-py && python3 -m unittest discover -p "test_*.py" -v` |
-| C (dmo) | CMake >= 3.20, C11/C++17, потрібен libosmocore (pkg-config) і сирці osmo-tetra: `OSMO_TETRA_DIR` (за замовчуванням `~/Public/repos/osmo-tetra/src`) |
-| Скрипт збірки | `scripts/deploy.sh -m debug|release [-t target]`; компілятор жорстко `clang` (змінна `compiler` у скрипті), генератор з `GEN`; збирає у `build-<mode>-<compiler>/`, копіює бінарі: debug -> `wd/`, release -> `bin/` (`bin/` відстежується git і містить ручні скрипти - нічого не видаляється) |
-| Цілі CMake | лише `dmo_rx` (бібліотеки `dmo_core`, `osmo_leaf`); exe додаються тільки в корневому `CMakeLists.txt` як `<target>_entry.c`, бібліотеки - у піддиректоріях |
-| Попередження | `-Wall -Wextra -Wpedantic` через INTERFACE-цільову `project_warnings`; чужий код `osmo_leaf` без неї |
-| Бекап | `scripts/back-up.sh` - zip `source-py/` у `bak/` без `__pycache__` |
-| Оточення з нуля | `docs/env-prepare-tetra.md` (Debian) |
+| Що              | Як                                                                                                                                                                                                                                                                                              |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Python          | збірки немає; запуск `./bin/tetra_demod in.wav -o out`; потрібні python3, numpy, scipy, matplotlib                                                                                                                                                                                              |
+| Тести Python    | `cd source-py && python3 -m unittest discover -p "test_*.py" -v`                                                                                                                                                                                                                                |
+| C (dmo)         | CMake >= 3.20, C11/C++17, потрібен libosmocore (pkg-config) і сирці osmo-tetra: `OSMO_TETRA_DIR` (за замовчуванням `~/Public/repos/osmo-tetra/src`)                                                                                                                                             |
+| Скрипт збірки   | `scripts/deploy.sh -m debug|release [-t target]`; компілятор жорстко `clang` (змінна `compiler` у скрипті), генератор з `GEN`; збирає у `build-<mode>-<compiler>/`, копіює бінарі: debug -> `wd/`, release -> `bin/` (`bin/` відстежується git і містить ручні скрипти - нічого не видаляється) |
+| Цілі CMake      | лише `dmo_rx` (бібліотеки `dmo_core`, `osmo_leaf`); exe додаються тільки в корневому `CMakeLists.txt` як `<target>_entry.c`, бібліотеки - у піддиректоріях                                                                                                                                      |
+| Попередження    | `-Wall -Wextra -Wpedantic` через INTERFACE-цільову `project_warnings`; чужий код `osmo_leaf` без неї                                                                                                                                                                                            |
+| Бекап           | `scripts/back-up.sh` - zip `source-py/` у `bak/` без `__pycache__`                                                                                                                                                                                                                              |
+| Оточення з нуля | `docs/env-prepare-tetra.md` (Debian)                                                                                                                                                                                                                                                            |
 
 ## 6. Інші документи
 
-| Файл | Зміст |
-|---|---|
-| `README.md` | короткий опис, структура, запуск |
-| `docs/tetra-demod-internals.md` | когерентність, `#`-рядки out.txt, збірка .bin/.bin2/.bin3/.bin4, колонка `type` |
-| `docs/burst-structures.md` | розкладки полів кожного типу burst'а (DMO і TMO), відомі послідовності, посилання на пункти стандарту, відповідність `type` і колонок `.bin4` |
-| `docs/env-prepare-tetra.md` | оточення Debian |
-| `docs/to-do.md` | плани й нотатки |
-| `docs/cheat-shit.md` | робочі нотатки власника - **не читати** без вказівки |
+| Файл                            | Зміст                                                                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `README.md`                     | короткий опис, структура, запуск                                                                                                              |
+| `docs/tetra-demod-internals.md` | когерентність, `#`-рядки out.txt, збірка .bin/.bin2/.bin3/.bin4, колонка `type`                                                               |
+| `docs/algo-tetra-demod.md`      | алгоритм `tetra_demod`: етапи, пріоритети, прив'язка до функцій                                                                               |
+| `docs/algo-dmo-rx.md`           | алгоритм `dmo_rx`: пошук burst'ів, канальне декодування, колір-код, TCH                                                                       |
+| `docs/burst-structures.md`      | розкладки полів кожного типу burst'а (DMO і TMO), відомі послідовності, посилання на пункти стандарту, відповідність `type` і колонок `.bin4` |
+| `docs/env-prepare-tetra.md`     | оточення Debian                                                                                                                               |
+| `docs/to-do.md`                 | плани й нотатки                                                                                                                               |
+| `docs/cheat-shit.md`            | робочі нотатки власника - **не читати** без вказівки                                                                                          |
 
 ## 7. Нормативні документи (не в git)
 
 PDF стандартів лежать у `docs/ETSI/` і додані до `.gitignore`. Якщо їх немає (новий клон), завантажити з etsi.org (пошук за номером на https://www.etsi.org/standards), саме ці версії, бо номери таблиць і клаузул у `dmo/docs/*.md` і в `source-py/pattern_check.py` відповідають їм:
 
-| Документ | Версія | Дата | Для чого |
-|---|---|---|---|
-| ETSI EN 300 392-2 | V3.8.1 | 2016-08 | TMO: air interface, burst'и і навчальні послідовності (9.4.4), `pattern_check.py` |
-| ETSI EN 300 396-2 | V1.4.1 | 2011-12 | DMO: фізичний рівень, DSB/DNB (9.4.3), `dmo/docs/dmo-phy-spec.md` |
+| Документ          | Версія | Дата    | Для чого                                                                                       |
+| ----------------- | ------ | ------- | ---------------------------------------------------------------------------------------------- |
+| ETSI EN 300 392-2 | V3.8.1 | 2016-08 | TMO: air interface, burst'и і навчальні послідовності (9.4.4), `pattern_check.py`              |
+| ETSI EN 300 396-2 | V1.4.1 | 2011-12 | DMO: фізичний рівень, DSB/DNB (9.4.3), `dmo/docs/dmo-phy-spec.md`                              |
 | ETSI EN 300 396-3 | V1.4.1 | 2011-12 | DMO: MAC, DMAC-SYNC (SCH/S, SCH/H), `dmo/docs/dmo-mac-spec.md`; зараз у `docs/ETSI/` відсутній |
 
 Ім'я файлу в `docs/ETSI/`: `ETSI_EN_300_392-2_V3.8.1(2016-08).pdf`, `ETSI_EN_300_396-2 V1.4.1(2011-12).pdf`.

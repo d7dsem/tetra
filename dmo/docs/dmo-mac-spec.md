@@ -7,10 +7,10 @@
 
 ## 1. Який PDU у якому блоці DSB
 
-| Блок DSB | Логічний канал | type-1 біт | PDU | Таблиця | Джерело |
-|---|---|---|---|---|---|
-| block 1 (BKN1) | SCH/S | 60 | DMAC-SYNC, частина "SCH/S" | table 21 | [396-3 §9.1.1] |
-| block 2 (BKN2) | SCH/H | 124 | DMAC-SYNC, частина "SCH/H" | table 22 | [396-3 §9.1.1] |
+| Блок DSB       | Логічний канал | type-1 біт | PDU                        | Таблиця  | Джерело        |
+| -------------- | -------------- | ---------- | -------------------------- | -------- | -------------- |
+| block 1 (BKN1) | SCH/S          | 60         | DMAC-SYNC, частина "SCH/S" | table 21 | [396-3 §9.1.1] |
+| block 2 (BKN2) | SCH/H          | 124        | DMAC-SYNC, частина "SCH/H" | table 22 | [396-3 §9.1.1] |
 
 - Один PDU DMAC-SYNC "завжди передається з використанням 60 біт SCH/S і 124 біт SCH/H" [396-3 §9.1.1]. Відображення MAC PDU на канали: DMAC-SYNC -> SCH/S + SCH/H [396-3 table 20, §8.2.3].
 - Вміст двох блоків "directly linked"; тип MAC PDU вказується в SCH/S і для прямого MS-MS завжди DMAC-SYNC [396-3 §8.5.1].
@@ -23,18 +23,18 @@
 
 Поля M = обов'язкові, C = умовні. Сума довжин у кожному варіанті = 60.
 
-| offset | довж. | Поле | Тип | Значення / умова | Джерело |
-|---|---|---|---|---|---|
-| 0..3 | 4 | System code | M | див. 2.1 | table 21, §9.3.29 |
-| 4..5 | 2 | SYNC PDU type | M | 00 = DMAC-SYNC (для цього PDU) | table 21, §9.3.28 |
-| 6..7 | 2 | Communication type | M | 00 = direct MS-MS; 01 = via DM-REP; 10 = via DM-GATE; 11 = via DM-REP/GATE. Table 21 вимагає 00 для direct MS-MS | table 21, §9.3.3 |
-| 8 | 1 | Master/slave link flag АБО Reserved | C | M/S flag, якщо comm type = 01 або 11; Reserved (default 0), якщо 00 або 10 | table 21 |
-| 9 | 1 | Gateway generated message flag АБО Reserved | C | gateway flag, якщо comm type = 10 або 11; Reserved (default 0), якщо 00 або 01 | table 21 |
-| 10..11 | 2 | A/B channel usage | M | 00 = channel A normal mode; 01 = channel A frequency efficient mode; 10 = channel B; 11 = reserved | table 21, §9.3.1 |
-| 12..13 | 2 | Slot number | M | 00 = slot 1, 01 = slot 2, 10 = slot 3, 11 = slot 4 | table 21, §9.3.25 |
-| 14..18 | 5 | Frame number | M | 00000 = reserved; 00001..10010 = frame 1..18; решта reserved | table 21, §9.3.11 |
-| 19..20 | 2 | Air interface encryption state | M | 00 = DM-1 (без шифрування); 01 = DM-2-C; 10 = DM-2-A; 11 = DM-2-B. Визначає інтерпретацію наступних 39 біт | table 21, §9.3.2 |
-| 21..59 | 39 | залежить від encryption state | C | див. нижче | table 21 |
+| offset | довж. | Поле                                        | Тип | Значення / умова                                                                                                 | Джерело           |
+| ------ | ----- | ------------------------------------------- | --- | ---------------------------------------------------------------------------------------------------------------- | ----------------- |
+| 0..3   | 4     | System code                                 | M   | див. 2.1                                                                                                         | table 21, §9.3.29 |
+| 4..5   | 2     | SYNC PDU type                               | M   | 00 = DMAC-SYNC (для цього PDU)                                                                                   | table 21, §9.3.28 |
+| 6..7   | 2     | Communication type                          | M   | 00 = direct MS-MS; 01 = via DM-REP; 10 = via DM-GATE; 11 = via DM-REP/GATE. Table 21 вимагає 00 для direct MS-MS | table 21, §9.3.3  |
+| 8      | 1     | Master/slave link flag АБО Reserved         | C   | M/S flag, якщо comm type = 01 або 11; Reserved (default 0), якщо 00 або 10                                       | table 21          |
+| 9      | 1     | Gateway generated message flag АБО Reserved | C   | gateway flag, якщо comm type = 10 або 11; Reserved (default 0), якщо 00 або 01                                   | table 21          |
+| 10..11 | 2     | A/B channel usage                           | M   | 00 = channel A normal mode; 01 = channel A frequency efficient mode; 10 = channel B; 11 = reserved               | table 21, §9.3.1  |
+| 12..13 | 2     | Slot number                                 | M   | 00 = slot 1, 01 = slot 2, 10 = slot 3, 11 = slot 4                                                               | table 21, §9.3.25 |
+| 14..18 | 5     | Frame number                                | M   | 00000 = reserved; 00001..10010 = frame 1..18; решта reserved                                                     | table 21, §9.3.11 |
+| 19..20 | 2     | Air interface encryption state              | M   | 00 = DM-1 (без шифрування); 01 = DM-2-C; 10 = DM-2-A; 11 = DM-2-B. Визначає інтерпретацію наступних 39 біт       | table 21, §9.3.2  |
+| 21..59 | 39    | залежить від encryption state               | C   | див. нижче                                                                                                       | table 21          |
 
 Bits 8 і 9 завжди присутні (по 1 біту) за будь-якого comm type: M/S flag у біті 8 означає "0 = slave link, 1 = master link" [396-3 §9.3.17], gateway flag у біті 9 "0 = message originated by DM-MS" [396-3 §9.3.13]. Для comm type = 00 обидва біти - Reserved, default 0 [table 21]. Обидва прапори "not used in the present document" [396-3 §9.3.13, §9.3.17].
 
@@ -44,14 +44,14 @@ Bits 8 і 9 завжди присутні (по 1 біту) за будь-яко
 
 ### 2.1 System code [396-3 §9.3.29]
 
-| Значення | Зміст |
-|---|---|
-| 0xxx | TMO system (EN 300 392-2) |
-| 100y (1000, 1001) | Reserved |
-| 1010, 1011 | DMO reserved |
-| 1100 | ETS 300 396-3 (DMO) - перша версія стандарту |
-| 1101 | EN 300 396-3 V1.2.1 ... до цієї версії (DMO AI) і EN 300 396-6 v1.2.1-1.4.1 (DMO Security) |
-| 1110, 1111 | DMO reserved |
+| Значення          | Зміст                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| 0xxx              | TMO system (EN 300 392-2)                                                                  |
+| 100y (1000, 1001) | Reserved                                                                                   |
+| 1010, 1011        | DMO reserved                                                                               |
+| 1100              | ETS 300 396-3 (DMO) - перша версія стандарту                                               |
+| 1101              | EN 300 396-3 V1.2.1 ... до цієї версії (DMO AI) і EN 300 396-6 v1.2.1-1.4.1 (DMO Security) |
+| 1110, 1111        | DMO reserved                                                                               |
 
 Правило прийому: DM-MS не повинен відкидати sync PDU з reserved system code з DMO-діапазону без подальшого дослідження (SYNC PDU type, message type) [396-3 §9.3.29]. Для DMAC-SYNC із відомим DMO-кодом також "should not reject" без перевірки решти [там само]. System code у DSB відрізняється від TMO SYNC PDU (0xxx) [396-3 §8.4.2.2.1, NOTE 5].
 
@@ -59,23 +59,23 @@ Bits 8 і 9 завжди присутні (по 1 біту) за будь-яко
 
 Порядок елементів зверху вниз = порядок передачі. Умови визначаються полями SCH/S (communication type) і самого SCH/H (fragmentation flag).
 
-| Поле | Довж. | Тип | Умова / значення | Джерело |
-|---|---|---|---|---|
-| Repeater address | 10 | C | якщо comm type = 01 | table 22, §9.3.23 |
-| Gateway address | 10 | C | якщо comm type = 10 або 11 | table 22, §9.3.12 |
-| Reserved | 10 | C | якщо comm type = 00; default all zeros | table 22 |
-| Fill bit indication | 1 | M | 0 = fill bits немає; 1 = є | §9.3.8 |
-| Fragmentation flag | 1 | M | 0 = без фрагментації; 1 = початок фрагментації | §9.3.9 |
-| Number of SCH/F slots | 4 | C | якщо fragmentation flag = 1; 0001..1001 = 1..9 слотів SCH/F; 0000 і решта reserved | table 22, §9.3.22 |
-| Frame countdown | 2 | M | 00 = фінальний кадр; 01/10/11 = ще 1/2/3 кадри повторень | §9.3.10 |
-| Destination address type | 2 | M | 00 = true SSI (з MNI з PDU); 01 = pseudo SSI; 10 = немає адреси (не використовується, і заборонено для direct MS-MS і DM-REP - NOTE table 22); 11 = reserved | §9.3.5 |
-| Destination address | 24 | C | якщо dest. address type != 10 (для direct MS-MS завжди) | table 22 |
-| Source address type | 2 | M | 00 = true SSI; 01 = pseudo SSI; 10 = немає (заборонено для direct); 11 = reserved | §9.3.27 |
-| Source address | 24 | C | якщо source address type != 10 (для direct завжди) | table 22 |
-| Mobile Network Identity | 24 | C | завжди, якщо comm type = 00 або 01; для 10/11 - EN 300 396-5 | table 22, §9.3.20 |
-| Message type | 5 | M | див. 3.2 | §9.3.19 |
-| Message dependent elements | змінна | C | залежать від message type, clause 9.4/9.5 | table 22, §9.3.18 |
-| DM-SDU | змінна | C | дані layer 3 | table 22 |
+| Поле                       | Довж.  | Тип | Умова / значення                                                                                                                                             | Джерело           |
+| -------------------------- | ------ | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| Repeater address           | 10     | C   | якщо comm type = 01                                                                                                                                          | table 22, §9.3.23 |
+| Gateway address            | 10     | C   | якщо comm type = 10 або 11                                                                                                                                   | table 22, §9.3.12 |
+| Reserved                   | 10     | C   | якщо comm type = 00; default all zeros                                                                                                                       | table 22          |
+| Fill bit indication        | 1      | M   | 0 = fill bits немає; 1 = є                                                                                                                                   | §9.3.8            |
+| Fragmentation flag         | 1      | M   | 0 = без фрагментації; 1 = початок фрагментації                                                                                                               | §9.3.9            |
+| Number of SCH/F slots      | 4      | C   | якщо fragmentation flag = 1; 0001..1001 = 1..9 слотів SCH/F; 0000 і решта reserved                                                                           | table 22, §9.3.22 |
+| Frame countdown            | 2      | M   | 00 = фінальний кадр; 01/10/11 = ще 1/2/3 кадри повторень                                                                                                     | §9.3.10           |
+| Destination address type   | 2      | M   | 00 = true SSI (з MNI з PDU); 01 = pseudo SSI; 10 = немає адреси (не використовується, і заборонено для direct MS-MS і DM-REP - NOTE table 22); 11 = reserved | §9.3.5            |
+| Destination address        | 24     | C   | якщо dest. address type != 10 (для direct MS-MS завжди)                                                                                                      | table 22          |
+| Source address type        | 2      | M   | 00 = true SSI; 01 = pseudo SSI; 10 = немає (заборонено для direct); 11 = reserved                                                                            | §9.3.27           |
+| Source address             | 24     | C   | якщо source address type != 10 (для direct завжди)                                                                                                           | table 22          |
+| Mobile Network Identity    | 24     | C   | завжди, якщо comm type = 00 або 01; для 10/11 - EN 300 396-5                                                                                                 | table 22, §9.3.20 |
+| Message type               | 5      | M   | див. 3.2                                                                                                                                                     | §9.3.19           |
+| Message dependent elements | змінна | C   | залежать від message type, clause 9.4/9.5                                                                                                                    | table 22, §9.3.18 |
+| DM-SDU                     | змінна | C   | дані layer 3                                                                                                                                                 | table 22          |
 
 MNI = 10 біт MCC + 14 біт MNC, старший біт першим [396-3 §9.3.20 + NOTE]. Порядок MCC перед MNC випливає з NOTE ("10-bit MCC and a 14-bit MNC") і з посилання на EN 300 396-1 clause 6.2; самого розміщення в бітах окремо не наведено - **UNVERIFIED** (EN 300 396-1 не читався).
 
@@ -83,20 +83,20 @@ MNI = 10 біт MCC + 14 біт MNC, старший біт першим [396-3 �
 
 Зміщення виведено підсумовуванням довжин table 22 (не окремою цитатою стандарту).
 
-| Поле | Без фрагментації (frag=0) | З фрагментацією (frag=1) |
-|---|---|---|
-| Reserved (10) | 0..9 | 0..9 |
-| Fill bit indication | 10 | 10 |
-| Fragmentation flag | 11 | 11 |
-| Number of SCH/F slots | - | 12..15 |
-| Frame countdown | 12..13 | 16..17 |
-| Destination address type | 14..15 | 18..19 |
-| Destination address | 16..39 | 20..43 |
-| Source address type | 40..41 | 44..45 |
-| Source address | 42..65 | 46..69 |
-| MNI | 66..89 | 70..93 |
-| Message type | 90..94 | 94..98 |
-| Message dependent + DM-SDU (+ fill) | 95..123 (29 біт) | 99..123 (25 біт) |
+| Поле                                | Без фрагментації (frag=0) | З фрагментацією (frag=1) |
+| ----------------------------------- | ------------------------- | ------------------------ |
+| Reserved (10)                       | 0..9                      | 0..9                     |
+| Fill bit indication                 | 10                        | 10                       |
+| Fragmentation flag                  | 11                        | 11                       |
+| Number of SCH/F slots               | -                         | 12..15                   |
+| Frame countdown                     | 12..13                    | 16..17                   |
+| Destination address type            | 14..15                    | 18..19                   |
+| Destination address                 | 16..39                    | 20..43                   |
+| Source address type                 | 40..41                    | 44..45                   |
+| Source address                      | 42..65                    | 46..69                   |
+| MNI                                 | 66..89                    | 70..93                   |
+| Message type                        | 90..94                    | 94..98                   |
+| Message dependent + DM-SDU (+ fill) | 95..123 (29 біт)          | 99..123 (25 біт)         |
 
 Для comm type = 01 перше поле - Repeater address (10) замість Reserved, решта зміщень ті самі (довжина та сама). Для 10/11 довжина MNI/структура залежить від EN 300 396-5 - **UNVERIFIED** (не читався).
 
@@ -152,18 +152,18 @@ Fill bits: якщо MAC header + DM-SDU коротші за блок, DM-MAC с�
 
 Розкладку з розділу 2 застосовано до трьох рядків по 60 біт. Підрахунок виконано скриптом Python у scratchpad (`python3 -I`, лише нарізання рядків; нічого з проєкту не запускалось). Кожен рядок має рівно 60 символів.
 
-| Поле | offset | (a) | (b) | (c) |
-|---|---|---|---|---|
-| System code | 0..3 | 1100 | 1100 | 1100 |
-| SYNC PDU type | 4..5 | 00 (DMAC-SYNC) | 00 | 00 |
-| Communication type | 6..7 | 00 (direct MS-MS) | 00 | 00 |
-| bit 8 (Reserved при comm 00) | 8 | 0 | 0 | 0 |
-| bit 9 (Reserved при comm 00) | 9 | 0 | 0 | 0 |
-| A/B channel usage | 10..11 | 00 (channel A, normal) | 00 | 00 |
-| Slot number | 12..13 | 01 = слот 2 | 10 = слот 3 | 11 = слот 4 |
-| Frame number | 14..18 | 01111 = 15 | 01111 = 15 | 01111 = 15 |
-| Air interface encryption state | 19..20 | 00 (DM-1) | 00 | 00 |
-| Reserved 39 | 21..59 | усі нулі | усі нулі | усі нулі |
+| Поле                           | offset | (a)                    | (b)         | (c)         |
+| ------------------------------ | ------ | ---------------------- | ----------- | ----------- |
+| System code                    | 0..3   | 1100                   | 1100        | 1100        |
+| SYNC PDU type                  | 4..5   | 00 (DMAC-SYNC)         | 00          | 00          |
+| Communication type             | 6..7   | 00 (direct MS-MS)      | 00          | 00          |
+| bit 8 (Reserved при comm 00)   | 8      | 0                      | 0           | 0           |
+| bit 9 (Reserved при comm 00)   | 9      | 0                      | 0           | 0           |
+| A/B channel usage              | 10..11 | 00 (channel A, normal) | 00          | 00          |
+| Slot number                    | 12..13 | 01 = слот 2            | 10 = слот 3 | 11 = слот 4 |
+| Frame number                   | 14..18 | 01111 = 15             | 01111 = 15  | 01111 = 15  |
+| Air interface encryption state | 19..20 | 00 (DM-1)              | 00          | 00          |
+| Reserved 39                    | 21..59 | усі нулі               | усі нулі    | усі нулі    |
 
 Оцінка за стандартом:
 - 1100 - допустимий system code: "ETS 300 396-3 (DMO)" [396-3 §9.3.29]. Це не TMO-значення (TMO = 0xxx), тож "system code 1100" у TMO-шаблоні був хибним тлумаченням, а не помилкою даних.
@@ -182,16 +182,16 @@ Fill bits: якщо MAC header + DM-SDU коротші за блок, DM-MAC с�
 
 Порівняно читанням тексту обох редакцій (V1.2.1 - plain-text; PDF V1.2.1 окремо не рендерився).
 
-| Місце | V1.2.1 | V1.4.1 |
-|---|---|---|
-| Table 21 (SCH/S) | ті самі поля, довжини, умови | без змін (рендер V1.4.1; V1.2.1 з тексту) |
-| Table 22 (SCH/H) | ті самі | без змін; посилання "see part 5" замінено на "EN 300 396-5 [5]" |
-| System code §9.3.29 | 1100 = ETS 300 396-3; 1101 = "Version 1.2.1 of the present document (DMO)" | 1101 = EN 300 396-3 V1.2.1 до поточної версії (DMO AI) і EN 300 396-6 v1.2.1-1.4.1 (DMO Security); додано примітку, що версія документів може змінюватись без зміни system code |
-| System code, правило прийому | абзаців про "shall/should not reject" після таблиці немає (за текстом V1.2.1) | є абзаци "DM-MSs shall not reject ... reserved system code in the DMO range" і про DPRES-SYNC |
-| SYNC PDU type §9.3.28 | посилання на ETS 300 396-5, EN 300 396-7, EN 300 396-10 | ті самі, оновлені назви/посилання (EN 300 396-5, [i.2], [i.3]) |
-| DCC §8.2.4 | e(1)..e(30), та сама порядок бітів, та сама DM-2-C/EDSI вимога, e=0 для DSB | без змін по суті |
-| Frame number §9.3.11 | 00000 reserved, 1..18 | без змін |
-| Air interface encryption state §9.3.2 | DM-2-A/B/C визначено; нотатки NOTE 1-3 | додано NOTE 1-3 про відсутність шифрування типів адрес і рівні безпеки |
+| Місце                                 | V1.2.1                                                                        | V1.4.1                                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Table 21 (SCH/S)                      | ті самі поля, довжини, умови                                                  | без змін (рендер V1.4.1; V1.2.1 з тексту)                                                                                                                                       |
+| Table 22 (SCH/H)                      | ті самі                                                                       | без змін; посилання "see part 5" замінено на "EN 300 396-5 [5]"                                                                                                                 |
+| System code §9.3.29                   | 1100 = ETS 300 396-3; 1101 = "Version 1.2.1 of the present document (DMO)"    | 1101 = EN 300 396-3 V1.2.1 до поточної версії (DMO AI) і EN 300 396-6 v1.2.1-1.4.1 (DMO Security); додано примітку, що версія документів може змінюватись без зміни system code |
+| System code, правило прийому          | абзаців про "shall/should not reject" після таблиці немає (за текстом V1.2.1) | є абзаци "DM-MSs shall not reject ... reserved system code in the DMO range" і про DPRES-SYNC                                                                                   |
+| SYNC PDU type §9.3.28                 | посилання на ETS 300 396-5, EN 300 396-7, EN 300 396-10                       | ті самі, оновлені назви/посилання (EN 300 396-5, [i.2], [i.3])                                                                                                                  |
+| DCC §8.2.4                            | e(1)..e(30), та сама порядок бітів, та сама DM-2-C/EDSI вимога, e=0 для DSB   | без змін по суті                                                                                                                                                                |
+| Frame number §9.3.11                  | 00000 reserved, 1..18                                                         | без змін                                                                                                                                                                        |
+| Air interface encryption state §9.3.2 | DM-2-A/B/C визначено; нотатки NOTE 1-3                                        | додано NOTE 1-3 про відсутність шифрування типів адрес і рівні безпеки                                                                                                          |
 
 Суттєвих відмінностей у форматі table 21/22 і правилах DCC між двома редакціями не знайдено.
 

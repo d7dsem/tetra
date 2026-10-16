@@ -12,15 +12,15 @@
 
 ### 1.1 DSB, table 16 [396-2 §9.4.3.2.3]
 
-| Поле | BN (1-based) | offset (0-based) | довжина | зміст | clause |
-|---|---|---|---|---|---|
-| preamble P3 | 1..12 | 0..11 | 12 | l1..l12 | §9.4.3.3.4 |
-| phase adjustment | 13..14 | 12..13 | 2 | hl1..hl2 | §9.4.3.3.5 |
-| frequency correction | 15..94 | 14..93 | 80 | f1..f80 | §9.4.3.3.1 |
-| scrambled sync block 1 (SCH/S) | 95..214 | 94..213 | 120 | sb(1)..sb(120) | §8 |
-| sync training sequence | 215..252 | 214..251 | 38 | y1..y38 | §9.4.3.3.4 |
-| scrambled block 2 (SCH/H) | 253..468 | 252..467 | 216 | bkn2(1)..bkn2(216) | §8 |
-| tail | 469..470 | 468..469 | 2 | t1..t2 = (0,0) | §9.4.3.3.6, (68) |
+| Поле                           | BN (1-based) | offset (0-based) | довжина | зміст              | clause           |
+| ------------------------------ | ------------ | ---------------- | ------- | ------------------ | ---------------- |
+| preamble P3                    | 1..12        | 0..11            | 12      | l1..l12            | §9.4.3.3.4       |
+| phase adjustment               | 13..14       | 12..13           | 2       | hl1..hl2           | §9.4.3.3.5       |
+| frequency correction           | 15..94       | 14..93           | 80      | f1..f80            | §9.4.3.3.1       |
+| scrambled sync block 1 (SCH/S) | 95..214      | 94..213          | 120     | sb(1)..sb(120)     | §8               |
+| sync training sequence         | 215..252     | 214..251         | 38      | y1..y38            | §9.4.3.3.4       |
+| scrambled block 2 (SCH/H)      | 253..468     | 252..467         | 216     | bkn2(1)..bkn2(216) | §8               |
+| tail                           | 469..470     | 468..469         | 2       | t1..t2 = (0,0)     | §9.4.3.3.6, (68) |
 
 - Сума 12+2+80+120+38+216+2 = 470.
 - Відображення логічних каналів: SCH/S лежить у BKN1 (120 біт), SCH/H у BKN2 (216 біт) DSB; FN 1..18, TN 1..4 [396-2 §9.4.5, table 21; §9.4.3.2].
@@ -28,28 +28,28 @@
 
 ### 1.2 DNB, table 15 [396-2 §9.4.3.2.1]
 
-| Поле | BN | offset | довжина | зміст | clause |
-|---|---|---|---|---|---|
-| preamble (P1 або P2) | 1..12 | 0..11 | 12 | j1..j12 / k1..k12 | §9.4.3.3.3 |
-| phase adjustment | 13..14 | 12..13 | 2 | hk1..hk2 | §9.4.3.3.5 |
-| scrambled block 1 | 15..230 | 14..229 | 216 | bkn1(1..216) | §8 |
-| normal training seq (n або p) | 231..252 | 230..251 | 22 | n1..n22 / p1..p22 | §9.4.3.3.3 |
-| scrambled block 2 | 253..468 | 252..467 | 216 | bkn2(1..216) | §8 |
-| tail | 469..470 | 468..469 | 2 | t1..t2 | §9.4.3.3.6 |
+| Поле                          | BN       | offset   | довжина | зміст             | clause     |
+| ----------------------------- | -------- | -------- | ------- | ----------------- | ---------- |
+| preamble (P1 або P2)          | 1..12    | 0..11    | 12      | j1..j12 / k1..k12 | §9.4.3.3.3 |
+| phase adjustment              | 13..14   | 12..13   | 2       | hk1..hk2          | §9.4.3.3.5 |
+| scrambled block 1             | 15..230  | 14..229  | 216     | bkn1(1..216)      | §8         |
+| normal training seq (n або p) | 231..252 | 230..251 | 22      | n1..n22 / p1..p22 | §9.4.3.3.3 |
+| scrambled block 2             | 253..468 | 252..467 | 216     | bkn2(1..216)      | §8         |
+| tail                          | 469..470 | 468..469 | 2       | t1..t2            | §9.4.3.3.6 |
 
 ## 2. SCH/S: ланцюг кодування [396-2 §8.3.1.1, fig. 9]
 
 Передача: type-1 -> block code -> +tail -> RCPC -> interleave -> scramble. Прийом - у зворотному порядку.
 
-| Крок | Параметри | Норма |
-|---|---|---|
-| type-1 | K1 = 60 біт | §8.3.1.1 |
-| block code (K1+16, K1) = (76,60) -> 76 біт | див. 2.1 | §8.3.1.1, §8.2.3.2 |
-| tail | 4 біти b2(77..80) = 0 -> type-2 = 80 біт | §8.3.1.1 |
-| RCPC rate 2/3 | 80 -> 120 type-3 біт | §8.3.1.1, §8.2.3.1 |
-| block interleaver (K,a) = (120,11) | 120 type-4 | §8.3.1.1, §8.2.4.1 |
-| scrambling | 120 type-5 біт, e(1..30)=0 | §8.3.1.1, §8.2.5 |
-| mux | sb(k) = b5(k), k=1..120 | (41) |
+| Крок                                       | Параметри                                | Норма              |
+| ------------------------------------------ | ---------------------------------------- | ------------------ |
+| type-1                                     | K1 = 60 біт                              | §8.3.1.1           |
+| block code (K1+16, K1) = (76,60) -> 76 біт | див. 2.1                                 | §8.3.1.1, §8.2.3.2 |
+| tail                                       | 4 біти b2(77..80) = 0 -> type-2 = 80 біт | §8.3.1.1           |
+| RCPC rate 2/3                              | 80 -> 120 type-3 біт                     | §8.3.1.1, §8.2.3.1 |
+| block interleaver (K,a) = (120,11)         | 120 type-4                               | §8.3.1.1, §8.2.4.1 |
+| scrambling                                 | 120 type-5 біт, e(1..30)=0               | §8.3.1.1, §8.2.5   |
+| mux                                        | sb(k) = b5(k), k=1..120                  | (41)               |
 
 ### 2.1 Block code (K1+16, K1) [396-2 §8.2.3.2]
 
@@ -79,15 +79,15 @@ b5(k) = b4(k) + p(k) mod 2 (36). Див. розділ 4.
 
 ## 3. SCH/H: ланцюг кодування [396-2 §8.3.1.2, fig. 9]
 
-| Крок | Параметри | Норма |
-|---|---|---|
-| type-1 | K1 = 124 біти | §8.3.1.2 |
-| block code (140,124) | той самий код §8.2.3.2, K1=124 | §8.3.1.2 |
-| tail | 4 біти b2(141..144) = 0 -> type-2 = 144 | §8.3.1.2 |
-| RCPC rate 2/3 | 144 -> 216 type-3; те саме puncturing, t=3, P=(1,2,5) | §8.3.1.2, §8.2.3.1.3 |
-| block interleaver (K,a) = (216,101) | 216 type-4 | §8.3.1.2, §8.2.4.1 |
-| scrambling | 216 біт, e(1..30)=0 | §8.3.1.2, §8.2.5.2 |
-| mux | в DSB - block 2: bkn2(k) = b5(k), k=1..216 | (43) |
+| Крок                                | Параметри                                             | Норма                |
+| ----------------------------------- | ----------------------------------------------------- | -------------------- |
+| type-1                              | K1 = 124 біти                                         | §8.3.1.2             |
+| block code (140,124)                | той самий код §8.2.3.2, K1=124                        | §8.3.1.2             |
+| tail                                | 4 біти b2(141..144) = 0 -> type-2 = 144               | §8.3.1.2             |
+| RCPC rate 2/3                       | 144 -> 216 type-3; те саме puncturing, t=3, P=(1,2,5) | §8.3.1.2, §8.2.3.1.3 |
+| block interleaver (K,a) = (216,101) | 216 type-4                                            | §8.3.1.2, §8.2.4.1   |
+| scrambling                          | 216 біт, e(1..30)=0                                   | §8.3.1.2, §8.2.5.2   |
+| mux                                 | в DSB - block 2: bkn2(k) = b5(k), k=1..216            | (43)                 |
 
 Той самий (140,124)/(216,101) ланцюг стандарт задає для STCH; у DSB блок 1 (BKN1) несе SCH/S, тому SCH/H у DSB завжди в BKN2 [396-2 §9.4.5, table 21]. Формула (42) (block-1) для DSB не застосовна: BKN1 DSB має 120 біт [396-2 §9.4.3.2].
 
@@ -116,17 +116,17 @@ p(-29..0) = 0, p(-31) = p(-30) = 1. Якщо регістр запам'ятат�
 
 `tetra_blk_param[]` у `src/lower_mac/tetra_lower_mac.c` (struct: name, type345_bits, type2_bits, type1_bits, interleave_a, have_crc16): SB1 (рядок 56) = 120/80/60/a=11; SB2 (64) = 216/144/124/a=101; NDB (72) = 216/144/124/a=101.
 
-| Крок прийому | Функція osmo (file:line, сигнатура) | Параметри з osmo | Параметри DMO | Статус |
-|---|---|---|---|---|
-| вирізання блоків з бурсту | `phy/tetra_burst.c` SB_BLK1_OFFSET (:31) = (6+1+40)*2 = 94, SB_BLK1_BITS=120 | offset 94, len 120 | SB1: offset 94, len 120 (table 16) | **EQUAL** для SCH/S |
-| | `phy/tetra_burst.c` SB_BLK2_OFFSET (:33) = (6+1+40+60+19+15)*2 = 282, len 216 | offset 282 (TMO: після 30 біт BB) | DSB: offset 252, len 216 | **ВІДРІЗНЯЄТЬСЯ**: у DSB немає 30 біт broadcast block; використовувати 252 |
-| descramble | `int tetra_scramb_bits(uint32_t lfsr_init, uint8_t *out, int len)` tetra_scramb.c:77 | SB1: SCRAMB_INIT (lower_mac.c:181); інші: `tcd->scramb_init` (:184) | e=0 для SCH/S і SCH/H -> init=3 | SCH/S: **EQUAL**. SCH/H: функція та сама, але шлях SB2/NDB в `tp_sap_udata_ind` бере `tcd->scramb_init` -> для DSB треба явно init=3 (**ВІДРІЗНЯЄТЬСЯ**) |
-| deinterleave | `void block_deinterleave(uint32_t K, uint32_t a, const uint8_t *in, uint8_t *out)` tetra_interleave.c:51; формула `block_interl_func` :36 = 1+((a*i) mod K) | K=120,a=11 / K=216,a=101 | ті самі (fig. 9) | **EQUAL** (формула (33) і значення K,a порівняно) |
-| depuncture | `int tetra_rcpc_depunct(enum tetra_rcpc_puncturer pu, const uint8_t *in, int len, uint8_t *out)` tetra_conv_enc.c:226, `TETRA_RCPC_PUNCT_2_3`: P={0,1,2,5} (:96), t=3, period=8, i=j (:128) | rate 2/3 для SB1/SB2 (lower_mac.c:253) | rate 2/3, P=(1,2,5), t=3, 8 (24)-(25) | **EQUAL** (формула k=8*((i-1)/t)+P[...] ідентична (24)) |
-| Viterbi | `void viterbi_dec_sb1_wrapper(const uint8_t *in, uint8_t *out, unsigned int sym_count)` viterbi.c:6 -> `conv_cch_decode(int8_t*, uint8_t*, int n)` viterbi_cch.c:58, K=5, N=4, поліноми в коментарі :29-32 | sym_count = type2_bits (80 / 144) | mother code (20)-(23) | поліноми **EQUAL** (збігаються з (20)-(23)); обробка tail/кінцевого стану в `osmo_conv_decode` - **UNVERIFIED** (libosmocore не читався); таблиці next_output/next_state не перевірялись |
-| CRC | `uint16_t crc16_ccitt_bits(uint8_t *bits, unsigned int len)` crc_simple.c:103 = crc16_itut_bits(0xffff,...), poly 0x1021; перевірка `crc == TETRA_CRC_OK (0x1d0f)` по `type1_bits+16` бітах (lower_mac.c:262) | SB1: 76 біт; SB2: 140 біт | (76,60), (140,124), G=(30) | **EQUAL** (алгоритм і 0x1D0F підтверджено обчисленням, див. 2.1) |
-| type-1 | перші `type1_bits` біт type-2 (lower_mac.c:262-285, msg->l1h копіює type1_bits) | 60 / 124 | 60 / 124 | **EQUAL** |
-| tail | у osmo не перевіряється | - | b2(77..80)=0; b2(141..144)=0 | можна використати як додаткову перевірку; osmo її не робить |
+| Крок прийому              | Функція osmo (file:line, сигнатура)                                                                                                                                                                           | Параметри з osmo                                                    | Параметри DMO                         | Статус                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| вирізання блоків з бурсту | `phy/tetra_burst.c` SB_BLK1_OFFSET (:31) = (6+1+40)*2 = 94, SB_BLK1_BITS=120                                                                                                                                  | offset 94, len 120                                                  | SB1: offset 94, len 120 (table 16)    | **EQUAL** для SCH/S                                                                                                                                                                      |
+|                           | `phy/tetra_burst.c` SB_BLK2_OFFSET (:33) = (6+1+40+60+19+15)*2 = 282, len 216                                                                                                                                 | offset 282 (TMO: після 30 біт BB)                                   | DSB: offset 252, len 216              | **ВІДРІЗНЯЄТЬСЯ**: у DSB немає 30 біт broadcast block; використовувати 252                                                                                                               |
+| descramble                | `int tetra_scramb_bits(uint32_t lfsr_init, uint8_t *out, int len)` tetra_scramb.c:77                                                                                                                          | SB1: SCRAMB_INIT (lower_mac.c:181); інші: `tcd->scramb_init` (:184) | e=0 для SCH/S і SCH/H -> init=3       | SCH/S: **EQUAL**. SCH/H: функція та сама, але шлях SB2/NDB в `tp_sap_udata_ind` бере `tcd->scramb_init` -> для DSB треба явно init=3 (**ВІДРІЗНЯЄТЬСЯ**)                                 |
+| deinterleave              | `void block_deinterleave(uint32_t K, uint32_t a, const uint8_t *in, uint8_t *out)` tetra_interleave.c:51; формула `block_interl_func` :36 = 1+((a*i) mod K)                                                   | K=120,a=11 / K=216,a=101                                            | ті самі (fig. 9)                      | **EQUAL** (формула (33) і значення K,a порівняно)                                                                                                                                        |
+| depuncture                | `int tetra_rcpc_depunct(enum tetra_rcpc_puncturer pu, const uint8_t *in, int len, uint8_t *out)` tetra_conv_enc.c:226, `TETRA_RCPC_PUNCT_2_3`: P={0,1,2,5} (:96), t=3, period=8, i=j (:128)                   | rate 2/3 для SB1/SB2 (lower_mac.c:253)                              | rate 2/3, P=(1,2,5), t=3, 8 (24)-(25) | **EQUAL** (формула k=8*((i-1)/t)+P[...] ідентична (24))                                                                                                                                  |
+| Viterbi                   | `void viterbi_dec_sb1_wrapper(const uint8_t *in, uint8_t *out, unsigned int sym_count)` viterbi.c:6 -> `conv_cch_decode(int8_t*, uint8_t*, int n)` viterbi_cch.c:58, K=5, N=4, поліноми в коментарі :29-32    | sym_count = type2_bits (80 / 144)                                   | mother code (20)-(23)                 | поліноми **EQUAL** (збігаються з (20)-(23)); обробка tail/кінцевого стану в `osmo_conv_decode` - **UNVERIFIED** (libosmocore не читався); таблиці next_output/next_state не перевірялись |
+| CRC                       | `uint16_t crc16_ccitt_bits(uint8_t *bits, unsigned int len)` crc_simple.c:103 = crc16_itut_bits(0xffff,...), poly 0x1021; перевірка `crc == TETRA_CRC_OK (0x1d0f)` по `type1_bits+16` бітах (lower_mac.c:262) | SB1: 76 біт; SB2: 140 біт                                           | (76,60), (140,124), G=(30)            | **EQUAL** (алгоритм і 0x1D0F підтверджено обчисленням, див. 2.1)                                                                                                                         |
+| type-1                    | перші `type1_bits` біт type-2 (lower_mac.c:262-285, msg->l1h копіює type1_bits)                                                                                                                               | 60 / 124                                                            | 60 / 124                              | **EQUAL**                                                                                                                                                                                |
+| tail                      | у osmo не перевіряється                                                                                                                                                                                       | -                                                                   | b2(77..80)=0; b2(141..144)=0          | можна використати як додаткову перевірку; osmo її не робить                                                                                                                              |
 
 Додатково:
 - Параметри для DMO: SCH/S -> запис SB1 (120/80/60/11); SCH/H -> запис SB2 або NDB (216/144/124/101) - **EQUAL** з fig. 9. Різниця лише в скремблюванні (init=3, а не cell-specific) та позиції блоку в бурсті.
