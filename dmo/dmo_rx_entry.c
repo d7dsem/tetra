@@ -305,7 +305,7 @@ int main(int argc, char **argv)
 			stem_of(path, stem, sizeof(stem));
 			out_stem = stem;
 		}
-		snprintf(out_path, sizeof(out_path), "%s.out", out_stem);
+		snprintf(out_path, sizeof(out_path), "%s.tch", out_stem);
 		f = fopen(out_path, "wb");
 		if (!f || fwrite(traffic, sizeof(int16_t) * DMO_TRAFFIC_RECORD_WORDS, n_traffic, f) != n_traffic) {
 			fprintf(stderr, "dmo_rx: cannot write %s\n", out_path);

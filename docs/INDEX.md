@@ -105,8 +105,8 @@ IQ (.wav 2ch int16 / .cs16)
 ### DMO (C)
 - `dmo/dmo_core/dmo_tuning.h` - усі константи DSB (470 біт, зсуви STS/SCH/S/SCH/H, довжини, інтерлівер) - "магічні числа" тільки тут;
 - `dmo_sync.c` - `dmo_sync_find` (пошук STS з допуском помилок); `dmo_burst.c` - `dmo_burst_slice`; `dmo_block.c` - `dmo_block_decode` (дескремблювання, деперемежіння, Viterbi, CRC; параметри `dmo_sch_s_params`, `dmo_sch_h_params`);
-- `dmo/dmo_rx_entry.c` - точка входу exe `dmo_rx`: `dmo_rx <bits-file> [-v] [-o STEM]`; файл = байти 0/1 (інакше помилка). `dmo_find_bursts` (DSB, DNB1, DNB2) -> для DSB `dmo_block_decode` SCH/S і SCH/H та `dmo_parse_sch_s`/`dmo_parse_sch_h` (поля) -> колір-код з DM-SETUP/CONNECT ACK/OCCUPIED -> для DNB `dmo_block_decode_scr` (SCH/F, STCH) або TCH -> `dmo_traffic_record` у `STEM.out`; підсумок першими рядками, далі рядок на burst; коди виходу 0 ok, 1 помилка, 2 аргументи; допуски - `dmo_tuning.h`;
-- `bin/dmo_voice STEM.out [out.wav]` - `.out` -> WAV через ETSI-кодек з `/tetra/bin` (`cdecoder`, `sdecoder`), кодек не інтегрований;
+- `dmo/dmo_rx_entry.c` - точка входу exe `dmo_rx`: `dmo_rx <bits-file> [-v] [-o STEM]`; файл = байти 0/1 (інакше помилка). `dmo_find_bursts` (DSB, DNB1, DNB2) -> для DSB `dmo_block_decode` SCH/S і SCH/H та `dmo_parse_sch_s`/`dmo_parse_sch_h` (поля) -> колір-код з DM-SETUP/CONNECT ACK/OCCUPIED -> для DNB `dmo_block_decode_scr` (SCH/F, STCH) або TCH -> `dmo_traffic_record` у `STEM.tch`; підсумок першими рядками, далі рядок на burst; коди виходу 0 ok, 1 помилка, 2 аргументи; допуски - `dmo_tuning.h`;
+- `bin/dmo_voice STEM.tch [out.wav]` - `.tch` -> WAV (за замовчуванням `STEM_audio.wav`) через ETSI-кодек з `/tetra/bin` (`cdecoder`, `sdecoder`), кодек не інтегрований;
 - специфікації: `dmo/docs/dmo-phy-spec.md` (розкладка бурстів, кодування; EN 300 396-2), `dmo/docs/dmo-mac-spec.md` (DMAC-SYNC, DM colour code; EN 300 396-3). Позначка **UNVERIFIED** = не підтверджено.
 
 ## 5. Збірка
