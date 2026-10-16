@@ -1,6 +1,6 @@
 # cheat-sheet - Шпаргалка
 
-Документ для збереженя нотатко щодо базових дій (проєкт tetra: офлайн-демодулятор TETRA π/4-DQPSK).
+Документ для збереженя нотаток щодо базових дій (проєкт tetra: офлайн-демодулятор TETRA π/4-DQPSK).
 
 ШІ - без прямої команди не модифікує. Включає у всі коміти безумвоно, в коміт меседж не вносити. 
 
@@ -29,105 +29,88 @@ TAIL  (4)   1100
   burst'а, тому не шукається.
 
 
-# Захват
+# DMO пйаплайн
 
-```
-voss_lch_cap -f 410.0e6 -m 0 -l 64 --viz --tag test
-```
-
-# Приклади, прив'язані до ПК
-
-Запис-приклад: `~/Public/signals/1otd/azart-open/72KHz/1_voice_open_rsmp_72e3.wav`
-(лежить на цьому ПК, у репозиторій не входить). Усі інструменти викликаються за
-іменем: `PATH` і аліаси з `docs/env-prepare-tetra.md`.
+*Захват Х310 -> підготвка (філтр/ресемплінг) ->* **демодуляція -> декодуваня -> to voice**
 
 ```bash
-cd ~/Public/signals/1otd/azart-open/72KHz
-tetra_demod 1_voice_open_rsmp_72e3.wav -o 1_voice_open_rsmp_72e3
-tetra_bits_export 1_voice_open_rsmp_72e3.wav -o 1_voice_open_rsmp_72e3
-tetra-rx 1_voice_open_rsmp_72e3.true.plus.bits | grep -c "found SYNC"   # 12
-mkdir -p /tmp/dump && tetra-rx -d /tmp/dump 1_voice_open_rsmp_72e3.true.plus.bits
-tplay /tmp/dump/*.out       # на цьому записі /tmp/dump порожній: tplay нічого не знайде
+# Пілготовча частина
+# Обрати катлог для роботи і перейти
+cd ~/Public/signals/1otd/
+mkdir azart-open && cd azart-open
+
+voss_lch_cap -f 410.0e6 -m 0 -l 64 --viz --tag voice_open
+# Результат voice_open_2026-10-15_10-29-54_part000.wav
+tetra_prep voice_open_2026-10-15_10-29-54_part000.wav --out-raete 72e3 -o 1_voice_open_rsmp72e3.wav
+
+
+
+tetra_demod 1_voice_open_rsmp72e3.wav -o 1_voice_open
+dmo_rx 1_voice_open.bits # -v - verbose
+
+dmo_voice 1_voice_open.tch
+
+# Послухати
+audacity 1_voice_open_audio.wav
+
 ```
 
 
-# Підготовка
+# tetra_demod
 
-```bash
-cd /шлях/до/репо
-chmod +x bin/tetra_demod            # один раз
-cd source-py && python3 -m unittest discover -p "test_*.py" -v
-```
-
-# Запуск
-
-```bash
-cd ~/Public/signals/1otd/azart-open/72KHz
-
-# з довільного каталогу (bin/ сам знаходить source-py/ відносно себе)
-tetra_demod 1_voice_open_rsmp_72e3.wav -o out
-
-# raw int16 interleaved I,Q: fs обов'язковий
-tetra_demod in.cs16 --fs 192000 -o out
-
-# графіки
-tetra_demod 1_voice_open_rsmp_72e3.wav -o out --plot
-```
 
 NOTE: `-o out` задає STEM, а не повне ім'я. Без `-o` стем = ім'я входу без розширення.
 
 `-e LE|BE` (`--endian`) - порядок бітів при пакуванні в байти `.bin`/`.bin2`/`.bin3`/`.bin4`:
 `BE` (за замовчуванням) - перший біт у старшому розряді байта, `LE` - у молодшому.
 
+
+
+## Вихідні артефакти
+
 ```bash
-tetra_demod 1_voice_open_rsmp_72e3.wav -o out -e BE
+tetra_demod 1_voice_open_rsmp_72e3.wav -o 1_out_be [-e BE] # be - default
+# Якщо надо в le
+# tetra_demod 1_voice_open_rsmp_72e3.wav -o 1_out_le -e LE
 ```
 
+**Основний результат**
+`1_out_be.txt`   - текстовий звіт по burst'ах (назви колонок - у рядку-заголовку самого файлу), містить класифікацію бурстів і технічну інформацію 
 
-# Вихідні файли
-
-```
-out.txt   - текстовий звіт по burst'ах (назви колонок - у рядку-заголовку самого файлу)
-out.bin   - чисті демодульовані біти підряд, БЕЗ доповнень (для роботи з даними)
-out.bin2  - те саме, але кожен burst доповнений нулями в КІНЦІ до кратності 510 біт
+**Для контроль біт в'юверами**
+`1_out_be.bin`   - чисті демодульовані біти підряд, БЕЗ доповнень (для роботи з даними), запаковані у байт.
+`1_out_be.bin2`  - те саме, але кожен burst доповнений нулями в КІНЦІ до кратності 510 біт
             (вирівнювання "наживо", не знає справжньої фази burst'а в слоті)
-out.bin3  - точніше: доповнення З ОБОХ боків за СПРАВЖНЬОЮ фазою burst'а
+`1_out_be.bin3`  - точніше: доповнення З ОБОХ боків за СПРАВЖНЬОЮ фазою burst'а
             (обчислено з start_sample) - для перегляду в bit viewer'і (Hobbits,
             Width Framer, width=510) дає чистішу структуру, ніж .bin2
-```
+`1_out_be.bin4`  - вирівнювання з прив'язкою до NTS, саме красівк у біт в'юверах
 
-NOTE: `.bin2`/`.bin3` - лише для візуального аналізу структури, не для декодування
-(містять зайві нулі-доповнювачі між burst'ами).
+**Для декодувавня**
+
+`1_out_be.bits` - біт-байт предстваленя резултавитиу демодуляції (того що в `.txt` та `.bin`)
+
+`1_out_be.bits4` - біт-байт предстваленя резултавитиу демодуляції (того що `.bin4`)
+
+NOTE: `.bin2`/`.bin3` / `bin4` - лише для візуального аналізу структури, не для декодування (містять зайві нулі-доповнювачі між burst'ами).
+
+
 
 # Декодування DMO (dmo_rx)
 
-Нові вихідні файли `tetra_demod` (додатково до `out.bin`, `out.bin2`, `out.bin3`):
-
-```
-out.bin4  - слот (510 біт) на burst, burst вирівняно за типом за стандартом: поля в колонках
-            стандарту (для перегляду, ширина 510)
-out.bits, out.bits2, out.bits3, out.bits4
-          - ті самі біти, що .bin, .bin2, .bin3, .bin4, але ОДИН БІТ У БАЙТІ (0/1), без упаковки,
-            `-e` на них не діє; це вхід dmo_rx
-```
-
-NOTE: `-e` тепер за замовчуванням `BE` (перший біт у старшому розряді байта); стосується лише
-упакованих `.bin*`.
+На вход подавати вихідні `.bits` (або `.bits4`) файли `tetra_demod` :
 
 ```bash
 # зібрати один раз: потрібні clang, libosmocore, сирці osmo-tetra в ~/Public/repos/osmo-tetra/src
 cd ~/Public/repos/tetra
 scripts/deploy.sh -m release -t dmo_rx        # -> bin/dmo_rx (debug: -m debug -> wd/)
 
-# запуск: вхід - файл бітів, один біт у байті
-tetra_demod in.wav -o out
-bin/dmo_rx out.bits4                          # лог + out.tch (TCH-записи для кодека)
-bin/dmo_rx out.bits4 -v                       # + сирі біти SCH/S, SCH/H, SCH/F
-bin/dmo_rx out.bits4 -o res                   # артефакт res.tch (за замовчуванням ім'я входу + .tch)
+dmo_rx 1_out_be.bits -v                       # + сирі біти SCH/S, SCH/H, SCH/F
+dmo_rx 1_out_be.bits -o res                   # артефакт res.tch (за замовчуванням ім'я входу + .tch)
 
 # голос: .tch -> WAV 8 кГц mono (кодек cdecoder/sdecoder з /tetra/bin, як є)
-bin/dmo_voice out.tch                         # -> out_audio.wav
-bin/dmo_voice out.tch call.wav
+dmo_voice 1_out_be.tch                         # -> out_audio.wav
+dmo_voice 1_out_be.tch something_you_want.wav
 ```
 
 Вихід `dmo_rx`: першими рядками підсумок (`#`: скільки DSB, DNB1, DNB2; CRC OK по SCH/S, SCH/H, SCH/F, STCH;
@@ -148,23 +131,22 @@ tetra_demod 1_voice_open_rsmp_72e3.wav -o out --strict; echo $?              # 1
 
 Коди виходу: `0` ok/degraded, `1` degraded за `--strict`, `2` failed (є ERROR).
 
-| Код | Що означає |
-|---|---|
-| SILENT_INPUT, EMPTY_INPUT (fatal) | тиша / порожній файл |
-| INPUT_UNREADABLE (fatal) | не WAV int16 2ch / не читається |
-| NONFINITE_* | NaN/Inf у даних |
-| CLIPPING | відліки на межі шкали |
-| DC_OFFSET, IQ_IMPROPER | постійна складова / I,Q нерівноправні |
-| COARSE_OFFSET | центр потужності близько/за межею ±2250 Гц |
-| FREQ_ALIAS | зсув за burst'ами не збігається зі спектром |
-| BANDWIDTH, SYMBOL_LINE | не схоже на один канал 18 кбод |
-| CONTINUOUS_SIGNAL | пауз між burst'ами немає (режим search.noise_mode=global не підійде) |
-| SPEC_NO_SIGNAL, NO_BURSTS | сигналу/burst'ів не знайдено |
-| LOW_COHERENCE | не схоже на π/4-DQPSK |
-| FREQ_UNSTABLE | зсув між burst'ами розкиданий |
-| NO_PATTERNS_FOUND | жодного поля TETRA не знайдено в жодному burst'і |
-| BURST_EXCEPTION, STAGE_EXCEPTION | виняток усередині етапу (`--set health.reraise=true` покаже traceback) |
-
+Код                                  Що означає
+------------------------------------ -------------------------------------------------------------
+SILENT_INPUT, EMPTY_INPUT (fatal)    тиша / порожній файл
+INPUT_UNREADABLE (fatal)             не WAV int16 2ch / не читається
+NONFINITE_*                          NaN/Inf у даних
+CLIPPING                             відліки на межі шкали
+DC_OFFSET, IQ_IMPROPER               постійна складова / I,Q нерівноправні
+COARSE_OFFSET                        центр потужності близько/за межею ±2250 Гц
+FREQ_ALIAS                           зсув за burst'ами не збігається зі спектром
+BANDWIDTH, SYMBOL_LINE               не схоже на один канал 18 кбод
+CONTINUOUS_SIGNAL                    пауз між burst'ами немає (режим search.noise_mode=global не підійде)
+SPEC_NO_SIGNAL, NO_BURSTS            сигналу/burst'ів не знайдено
+LOW_COHERENCE                        не схоже на π/4-DQPSK
+FREQ_UNSTABLE                        зсув між burst'ами розкиданий
+NO_PATTERNS_FOUND                    жодного поля TETRA не знайдено в жодному burst'і
+BURST_EXCEPTION, STAGE_EXCEPTION     виняток усередині етапу (--set health.reraise=true покаже traceback)
 
 # [SUMMARY]: пошук полів TETRA
 
@@ -178,14 +160,14 @@ V3.8.1, розділ 9.4.4.3** (формули 9.1-9.13) напряму з те�
       ...
 ```
 
-| Поле | Довжина | Статус |
-|---|---|---|
-| FCF | 80 біт | звірено зі стандартом |
-| NTS1, NTS2, NTS3 | 22 біт | звірено зі стандартом (3 різні training sequences) |
-| STS | 38 біт | звірено зі стандартом + незалежне стороннє джерело |
-| ETS | 30 біт | звірено зі стандартом (uplink control burst) |
-| TAIL | 4 біт | звірено, але коротке - випадковий збіг статистично ймовірний, не враховується в "хоч щось знайдено" |
-| PHASE | - | НЕ фіксована послідовність (обчислюється динамічно за формулою 9.14), пошук структурно неможливий |
+Поле             Довжина  Статус
+---------------- -------- ------------------------------------------------------------------------------------------
+FCF              80 біт   звірено зі стандартом
+NTS1, NTS2, NTS3 22 біт   звірено зі стандартом (3 різні training sequences)
+STS              38 біт   звірено зі стандартом + незалежне стороннє джерело
+ETS              30 біт   звірено зі стандартом (uplink control burst)
+TAIL             4 біт    звірено, але коротке - випадковий збіг статистично ймовірний, не враховується в "хоч щось знайдено"
+PHASE            -        НЕ фіксована послідовність (обчислюється динамічно за формулою 9.14), пошук структурно неможливий
 
 Поріг помилок - тюнінг-параметр: `pattern_check.DETECT_THRESHOLD` (10% за замовчуванням).
 
@@ -240,9 +222,6 @@ NOTE: перевірено на 5 файлах з `coarse.merge_fraction=1/16` (
 - Тести лише на синтетиці (`synth.py`, генерує ВИПАДКОВІ біти - тому
   NO_PATTERNS_FOUND на них коректний, не помилка); тестів на реальних записах немає.
 - `tetra-rx` (osmo-tetra) розрахований на конкретний трафік - мережевий режим TETRA (TMO)
-  від базової станції. У його коді немає жодної згадки DMO (`dmo`, `direct mode`, `dm-sync`).
-  Підтверджено, що записи 1_mask_voice - DMO: `dmo_rx` декодує DSB за DMO-ланцюгом (CRC OK), system code `1100`,
-  преамбули P1-P3 і tail `00` в усіх burst'ах (TMO мав би tail `1100`). Раніша гіпотеза про TMO з нулями MCC/MNC/CC
-  у BSCH була хибним тлумаченням DMO-блоку.
+  від базової станції.
 - Тонкий зсув частоти однозначний лише в межах ±2250 Гц (symbol_rate/8).
 - Файл завантажується в пам'ять повністю (потокової обробки блоками немає).
