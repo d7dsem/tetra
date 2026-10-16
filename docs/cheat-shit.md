@@ -31,18 +31,24 @@ TAIL  (4)   1100
 
 # DMO пйаплайн
 
-*Захват Х310 -> підготвка (філтр/ресемплінг) ->* **демодуляція -> декодуваня -> to voice**
+**Захват Х310 -> підготвка (філтр/ресемплінг) -> демодуляція -> декодуваня -> to voice**
+
+Увікнути пристрій Х310 і в любому термінвалі виколанти `x310-run`.
+
 
 ```bash
+
 # Пілготовча частина
 # Обрати катлог для роботи і перейти
 cd ~/Public/signals/1otd/
 mkdir azart-open && cd azart-open
 
-voss_lch_cap -f 410.0e6 -m 0 -l 64 --viz --tag voice_open
+voss_lch_cap -f 410.0e6 -m 0 -l 64 --viz --tag big_ant
 # Результат voice_open_2026-10-15_10-29-54_part000.wav
-tetra_prep voice_open_2026-10-15_10-29-54_part000.wav --out-raete 72e3 -o 1_voice_open_rsmp72e3.wav
+tetra_prep voice_open_2026-10-15_10-29-54_part000.wav --out-rate 72e3 -o 1_voice_open_rsmp72e3.wav
 
+tetra_prep big_ant_max_2026-10-16_13-57-18_part000.wav --out-rate 72e3 -o big_ant_max.wav
+tetra_prep no_ant_2026-10-16_13-35-09_part000.wav --out-rate 72e3 -o no_ant.wav
 
 
 tetra_demod 1_voice_open_rsmp72e3.wav -o 1_voice_open
