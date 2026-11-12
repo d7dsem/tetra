@@ -27,3 +27,6 @@
 
 # t_start_s start_sample n_sym n_samples snr_db freq_hz coherence phase_rms_deg flags bits
 ....
+
+# Канальне декодування TCH (DMO, DNB1)
+Зроблено: demod-fixed/tch24_decode.py (TCH/2.4, N=1) і extract_file.py; файл відновлено, збігається з 00FF_5K.bin. TCH/4.8 і N=4,8 не реалізовані.
