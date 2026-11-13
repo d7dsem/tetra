@@ -25,9 +25,9 @@ const struct dmo_block_params dmo_sch_f_params = {
 
 uint32_t dmo_scramb_init_dcc(uint32_t mni, uint32_t src_addr)
 {
-	uint32_t e = ((mni & 0x3f) << 24) | (src_addr & 0xffffff);
+	uint32_t e = ((mni & DMO_SCRAMB_MNI_MASK) << DMO_ADDR_BITS) | (src_addr & DMO_ADDR_MASK);
 
-	return (e << 2) | 3;
+	return (e << DMO_SCRAMB_E_SHIFT) | DMO_SCRAMB_INIT;
 }
 
 void dmo_descramble(uint32_t scramb_init, const uint8_t *coded, unsigned n, uint8_t *type4)

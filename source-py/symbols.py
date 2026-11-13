@@ -12,14 +12,14 @@ import numpy as np
 from scipy.signal import firwin, resample_poly
 
 from burst_search import power
-from config import FrontEndConfig, TimingConfig
+from config import RESAMPLE_HALF_LEN_FACTOR, RESAMPLE_KAISER_BETA, FrontEndConfig, TimingConfig
 
 
 @lru_cache(maxsize=None)
 def _interp_taps(F: int) -> np.ndarray:
     """Той самий фільтр, що resample_poly проєктує за замовчуванням (kaiser 5.0),
     але один раз, а не на кожен burst."""
-    return firwin(2 * 10 * F + 1, 1.0 / F, window=("kaiser", 5.0))
+    return firwin(2 * RESAMPLE_HALF_LEN_FACTOR * F + 1, 1.0 / F, window=("kaiser", RESAMPLE_KAISER_BETA))
 
 
 @lru_cache(maxsize=None)

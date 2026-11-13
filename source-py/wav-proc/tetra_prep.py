@@ -10,6 +10,10 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.signal import firwin, lfilter, resample_poly
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # config.py лежить у source-py/
+from config import (INT16_FULL_SCALE, INT16_MAX, INT16_MIN,  # noqa: E402
+                    RESAMPLE_HALF_LEN_FACTOR, RESAMPLE_KAISER_BETA)
+
 # ---- Параметри (override: змінюються тут, CLI-прапорців немає) ----
 DEFAULT_OUT_RATE_HZ = 25_000.0   # TETRA DMO
 CHUNK_SIZE = 2_000_000           # вхідних відліків на ітерацію
@@ -19,9 +23,7 @@ FIR_CUTOFF_FRAC = 1.0            # зріз як частка out_rate/2 (оби
 FIR_NUMTAPS = 101                # довжина фільтра; більше -> крутіший зріз, повільніше
 FIR_WINDOW = "hamming"           # вікно firwin
 # Раціональний ресемплінг (up/down): поліфазний фільтр на частоті ×up
-POLY_HALF_LEN_FACTOR = 10        # півдовжина фільтра = factor * max(up, down) відліків
-POLY_WINDOW = ("kaiser", 5.0)    # як у scipy за замовчуванням
-INT16_FULL_SCALE = 32768.0
+POLY_WINDOW = ("kaiser", RESAMPLE_KAISER_BETA)
 
 
 def resolve_shift_hz(fc: float | None, sign_abs: float | None, sign_rel: float | None) -> float:
@@ -49,8 +51,8 @@ def load_iq(data_raw, lo: int, hi: int, shift_hz: float, fs_in: int) -> np.ndarr
 
 def write_int16(w, iq: np.ndarray):
     out = np.empty((iq.shape[0], 2), dtype=np.int16)
-    out[:, 0] = np.clip(np.rint(iq.real * INT16_FULL_SCALE), -32768, 32767)
-    out[:, 1] = np.clip(np.rint(iq.imag * INT16_FULL_SCALE), -32768, 32767)
+    out[:, 0] = np.clip(np.rint(iq.real * INT16_FULL_SCALE), INT16_MIN, INT16_MAX)
+    out[:, 1] = np.clip(np.rint(iq.imag * INT16_FULL_SCALE), INT16_MIN, INT16_MAX)
     w.writeframes(out.tobytes())
 
 
@@ -69,7 +71,7 @@ def run_decimate(data_raw, w, fs_in: int, fs_out: int, decim: int, shift_hz: flo
 def run_rational(data_raw, w, fs_in: int, up: int, down: int, shift_hz: float):
     """Чанки з перекриттям: край чанка обробляється з запасом pad, який потім відкидається."""
     total = data_raw.shape[0]
-    half_len = POLY_HALF_LEN_FACTOR * max(up, down)
+    half_len = RESAMPLE_HALF_LEN_FACTOR * max(up, down)
     h = firwin(2 * half_len + 1, FIR_CUTOFF_FRAC / max(up, down), window=POLY_WINDOW)
 
     # pad і розмір чанка кратні down -> фаза виходу збігається між чанками

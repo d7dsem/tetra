@@ -36,7 +36,7 @@ int dmo_sync_find(const uint8_t *stream, size_t len, unsigned max_bit_errors,
 		if (!sts_matches(stream + start + DMO_STS_OFFSET, max_bit_errors))
 			continue;
 		if (n == cap) {
-			size_t ncap = cap ? cap * 2 : 64;
+			size_t ncap = cap ? cap * 2 : DMO_INITIAL_CAP_ARRAY;
 			size_t *tmp = realloc(arr, ncap * sizeof(*arr));
 			if (!tmp) {
 				free(arr);

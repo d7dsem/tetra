@@ -63,18 +63,25 @@ def _seq(pairs_str: str) -> str:
     return "".join(x for x in pairs_str.replace(" ", "").split(",") if x != "")
 
 
+# Орієнтовні позиції відомих полів у слоті (для пошуку у KNOWN_FIELDS), біти
+FCF_SLOT_POS = 18
+NTS12_SLOT_POS = 234
+STS_SLOT_POS = 218
+ETS_SLOT_POS = 18
+FCF_ZERO_RUN_BITS = 64            # FCF: 8 одиниць, 64 нулі, 8 одиниць
+
 # (назва -> (бітовий рядок АБО None, позиція в слоті, статус))
 # позиції: FCF/STS/ETS - орієнтовні (за структурою sync/control burst, розділ 9.4.4.2);
 #          NTS1/NTS2/NTS3 - орієнтовні (normal burst, позиція середини/країв слота).
 KNOWN_FIELDS: Dict[str, Tuple[Optional[str], int, str]] = {
-    "FCF":   (_seq("1,1,1,1,1,1,1,1") + "0" * 64 + _seq("1,1,1,1,1,1,1,1"), 18, "ok"),
-    "NTS1":  (_seq("1,1, 0,1, 0,0, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,1, 0,0"), 234, "ok"),
-    "NTS2":  (_seq("0,1, 1,1, 1,0, 1,0, 0,1, 0,0, 0,0, 1,1, 0,1, 1,1, 1,0"), 234, "ok"),
+    "FCF":   (_seq("1,1,1,1,1,1,1,1") + "0" * FCF_ZERO_RUN_BITS + _seq("1,1,1,1,1,1,1,1"), FCF_SLOT_POS, "ok"),
+    "NTS1":  (_seq("1,1, 0,1, 0,0, 0,0, 1,1, 1,0, 1,0, 0,1, 1,1, 0,1, 0,0"), NTS12_SLOT_POS, "ok"),
+    "NTS2":  (_seq("0,1, 1,1, 1,0, 1,0, 0,1, 0,0, 0,0, 1,1, 0,1, 1,1, 1,0"), NTS12_SLOT_POS, "ok"),
     "NTS3":  (_seq("1,0, 1,1, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 1,0, 1,1, 0,1"), 0, "ok"),
     "STS":   (_seq("1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1, 0,0, 1,1, 1,0, "
-                   "1,0, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1"), 218, "ok"),
+                   "1,0, 0,1, 1,1, 0,0, 0,0, 0,1, 1,0, 0,1, 1,1"), STS_SLOT_POS, "ok"),
     "ETS":   (_seq("1,0, 0,1, 1,1, 0,1, 0,0, 0,0, 1,1, 1,0, 1,0, 0,1, "
-                   "1,1, 0,1, 0,0, 0,0, 1,1"), 18, "ok"),
+                   "1,1, 0,1, 0,0, 0,0, 1,1"), ETS_SLOT_POS, "ok"),
     "TAIL":  (_seq("1, 1, 0, 0"), 0, "ok"),            # лише 4 біти, див. застереження в докстрінгу
     "PHASE": (None, 0, "formula"),                     # НЕ фіксована послідовність, див. докстрінг
 }
@@ -125,17 +132,77 @@ _STS, _ETS, _FCF = (KNOWN_FIELDS[k][0] for k in ("STS", "ETS", "FCF"))
 _TAIL_TMO = "1100"            # (9.12); у DMO tail "00" (68)
 
 
+_TAIL_DMO = "00"              # DMO tail (68)
+
+# Геометрія burst'ів (довжина, guard перед burst'ом, зсуви полів - 0-based від першого біта burst'а).
+# DMO: EN 300 396-2 таблиці 14-16; TMO: EN 300 392-2 таблиці 9.2-9.12.
+DMO_BURST_BITS = 470
+DMO_GUARD_BEFORE_BITS = 34
+DMO_FCF_OFFSET = 14
+DMO_STS_OFFSET = 214
+DMO_NTS_OFFSET = 230
+DMO_TAIL_OFFSET = DMO_BURST_BITS - len(_TAIL_DMO)
+
+TMO_C_BITS = SLOT_BITS                  # неперервний downlink (SBc, NDBc): весь слот
+TMO_C_GUARD_BEFORE_BITS = 0
+TMO_C_Q_TAIL_BITS = 10            # перші 10 біт NTS3 стоять в кінці burst'а, решта - на початку
+TMO_C_Q_TAIL_OFFSET = TMO_C_BITS - TMO_C_Q_TAIL_BITS
+TMO_C_FCF_OFFSET = 14
+TMO_C_STS_OFFSET = 214
+TMO_C_NTS_OFFSET = 244
+
+TMO_D_BITS = 492                  # перервний downlink (SBd, NDBd)
+TMO_D_GUARD_BEFORE_BITS = 10
+TMO_D_Q_EDGE_BITS = 2             # по 2 біти NTS3 на кожному краї: останні - на початку, перші - в кінці
+TMO_D_Q_TAIL_OFFSET = TMO_D_BITS - TMO_D_Q_EDGE_BITS
+TMO_D_SB_FCF_OFFSET = 4
+TMO_D_SB_STS_OFFSET = 204
+TMO_D_NTS_OFFSET = 234
+
+TMO_UB_BITS = 462                 # normal uplink burst (NUB)
+TMO_UB_GUARD_BEFORE_BITS = 34
+TMO_UB_NTS_OFFSET = 220
+TMO_UB_TAIL_OFFSET = TMO_UB_BITS - len(_TAIL_TMO)
+
+TMO_CB_BITS = 206                 # control uplink burst (CB)
+TMO_CB_GUARD_BEFORE_BITS = 34
+TMO_CB_ETS_OFFSET = 88
+TMO_CB_TAIL_OFFSET = TMO_CB_BITS - len(_TAIL_TMO)
+
+# індекс навчальної послідовності (якоря) у fields
+ANCHOR_DSB = 2
+ANCHOR_NORMAL = 1
+
+
 def _layouts() -> Tuple[BurstLayout, ...]:
-    out = [BurstLayout("DSB", 470, 34, ((0, _P3), (14, _FCF), (214, _STS), (468, "00")), 2)]
+    q_head_c, q_tail_c = _Q[TMO_C_Q_TAIL_BITS:], _Q[:TMO_C_Q_TAIL_BITS]
+    q_head_d, q_tail_d = _Q[len(_Q) - TMO_D_Q_EDGE_BITS:], _Q[:TMO_D_Q_EDGE_BITS]
+    out = [BurstLayout("DSB", DMO_BURST_BITS, DMO_GUARD_BEFORE_BITS,
+                       ((0, _P3), (DMO_FCF_OFFSET, _FCF), (DMO_STS_OFFSET, _STS), (DMO_TAIL_OFFSET, _TAIL_DMO)),
+                       ANCHOR_DSB)]
     for k in "12":
-        out.append(BurstLayout("DNB" + k, 470, 34, ((0, _P1 if k == "1" else _P2), (230, _NTS[k]), (468, "00")), 1))
-    out.append(BurstLayout("SBc", 510, 0, ((0, _Q[10:]), (14, _FCF), (214, _STS), (500, _Q[:10])), 2))
-    out.append(BurstLayout("SBd", 492, 10, ((0, _Q[20:]), (4, _FCF), (204, _STS), (490, _Q[:2])), 2))
+        out.append(BurstLayout("DNB" + k, DMO_BURST_BITS, DMO_GUARD_BEFORE_BITS,
+                               ((0, _P1 if k == "1" else _P2), (DMO_NTS_OFFSET, _NTS[k]), (DMO_TAIL_OFFSET, _TAIL_DMO)),
+                               ANCHOR_NORMAL))
+    out.append(BurstLayout("SBc", TMO_C_BITS, TMO_C_GUARD_BEFORE_BITS,
+                           ((0, q_head_c), (TMO_C_FCF_OFFSET, _FCF), (TMO_C_STS_OFFSET, _STS),
+                            (TMO_C_Q_TAIL_OFFSET, q_tail_c)), ANCHOR_DSB))
+    out.append(BurstLayout("SBd", TMO_D_BITS, TMO_D_GUARD_BEFORE_BITS,
+                           ((0, q_head_d), (TMO_D_SB_FCF_OFFSET, _FCF), (TMO_D_SB_STS_OFFSET, _STS),
+                            (TMO_D_Q_TAIL_OFFSET, q_tail_d)), ANCHOR_DSB))
     for k in "12":
-        out.append(BurstLayout("NDBc" + k, 510, 0, ((0, _Q[10:]), (244, _NTS[k]), (500, _Q[:10])), 1))
-        out.append(BurstLayout("NDBd" + k, 492, 10, ((0, _Q[20:]), (234, _NTS[k]), (490, _Q[:2])), 1))
-        out.append(BurstLayout("NUB" + k, 462, 34, ((0, _TAIL_TMO), (220, _NTS[k]), (458, _TAIL_TMO)), 1))
-    out.append(BurstLayout("CB", 206, 34, ((0, _TAIL_TMO), (88, _ETS), (202, _TAIL_TMO)), 1))
+        out.append(BurstLayout("NDBc" + k, TMO_C_BITS, TMO_C_GUARD_BEFORE_BITS,
+                               ((0, q_head_c), (TMO_C_NTS_OFFSET, _NTS[k]), (TMO_C_Q_TAIL_OFFSET, q_tail_c)),
+                               ANCHOR_NORMAL))
+        out.append(BurstLayout("NDBd" + k, TMO_D_BITS, TMO_D_GUARD_BEFORE_BITS,
+                               ((0, q_head_d), (TMO_D_NTS_OFFSET, _NTS[k]), (TMO_D_Q_TAIL_OFFSET, q_tail_d)),
+                               ANCHOR_NORMAL))
+        out.append(BurstLayout("NUB" + k, TMO_UB_BITS, TMO_UB_GUARD_BEFORE_BITS,
+                               ((0, _TAIL_TMO), (TMO_UB_NTS_OFFSET, _NTS[k]), (TMO_UB_TAIL_OFFSET, _TAIL_TMO)),
+                               ANCHOR_NORMAL))
+    out.append(BurstLayout("CB", TMO_CB_BITS, TMO_CB_GUARD_BEFORE_BITS,
+                           ((0, _TAIL_TMO), (TMO_CB_ETS_OFFSET, _ETS), (TMO_CB_TAIL_OFFSET, _TAIL_TMO)),
+                           ANCHOR_NORMAL))
     return tuple(out)
 
 

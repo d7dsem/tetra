@@ -12,22 +12,24 @@ SNR burst'а в ЧАСТОТНОМУ домені. Для кожного burst'�
      SNR = 10*log10(mean_in_zone / median_out_of_zone).
 Рахується НА СИРОМУ масиві (до matched filter), узгоджено з часовим методом.
 """
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
-Segments = List[Tuple[int, int]]
+from config import ratio_to_db
 
+DEFAULT_WIN_S = 100e-6       # тривалість вікна FFT за замовчуванням
+MIN_FFT_WIN_SAMPLES = 8      # менше відліків у вікні - частотна оцінка безглузда
 
 def burst_freq_snr_db(raw: np.ndarray, burst: Tuple[int, int], sample_rate_hz: float,
-                      bandwidth_hz: float, win_s: float = 100e-6,
+                      bandwidth_hz: float, win_s: float = DEFAULT_WIN_S,
                       dc_guard_bins: int = 2) -> Optional[dict]:
     """raw: СИРІ (до matched filter) семпли ВСЬОГО масиву. burst: (start,end) у ньому.
     win_s: тривалість вікна FFT (визначає частотну роздільність = 1/win_s).
     Повертає dict з snr_db, n_windows, freq_resolution_hz, або None якщо замало даних."""
     s, e = burst
     seg = raw[s:e]
-    win = max(8, int(round(win_s * sample_rate_hz)))
+    win = max(MIN_FFT_WIN_SAMPLES, int(round(win_s * sample_rate_hz)))
     n_win = len(seg) // win
     if n_win < 1:
         return None
@@ -48,6 +50,6 @@ def burst_freq_snr_db(raw: np.ndarray, burst: Tuple[int, int], sample_rate_hz: f
     p_out = float(np.median(P[out_zone]))
     if p_out <= 0 or p_in <= p_out:
         return None
-    return dict(snr_db=float(10 * np.log10(p_in / p_out)),
+    return dict(snr_db=float(ratio_to_db(p_in / p_out)),
                n_windows=n_win, freq_resolution_hz=sample_rate_hz / win,
                bins_in_zone=int(zone.sum()), bins_out_zone=int(out_zone.sum()))

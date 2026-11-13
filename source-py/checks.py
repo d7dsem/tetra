@@ -15,19 +15,39 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 from burst_search import SearchResult, power
-from config import PipelineConfig
+from config import DQPSK_PHASE_STATES, MS_PER_S, PipelineConfig, db_to_ratio, ratio_to_db
 from demod import ambiguity_hz
 from health import CheckResult, error, info, warn
 from pattern_check import summarize_recording
 
 EPS = 1e-30
 
+SUBSAMPLE_MAX_N = 1 << 22          # скільки відліків лишає _subsample (статистична вибірка)
+SPEC_MIN_BLOCKS = 8                # менше блоків FFT - спектр не аналізуємо
+SPEC_BATCH_BLOCKS = 256            # блоків за один прохід FFT (обмеження пам'яті)
+SWING_PERCENTILES = (5, 95)        # перцентилі для розмаху потужності блоків
+ACTIVE_FLOOR_PERCENTILE = 10       # "тиха" потужність, відносно якої блок вважається активним
+SPEC_MIN_ACTIVE_BLOCKS = 3         # менше активних блоків - беремо всі
+SPEC_SMOOTH_BINS = 5               # ширина згладжування спектра, біни
+SPEC_MIN_SIGNAL_BINS = 8           # менше бінів над шумом - сигналу немає
+DC_EXCLUDE_HALF_BINS = 3           # біни навколо 0 Гц, виключені з центроїда й ширини
+BW99_LO_FRAC = 0.005               # 99% потужності: нижня й верхня межі накопиченої суми
+BW99_HI_FRAC = 0.995
+DC_PEAK_HALF_BINS = 1              # півширина піка на 0 Гц
+DC_NEAR_INNER_BINS = 10            # сусідні біни для порівняння з піком: від 10 до 60 від центра
+DC_NEAR_OUTER_BINS = 60
+SYMLINE_PEAK_HALF_BINS = 1         # півширина лінії символьної частоти
+SYMLINE_REF_INNER_BINS = 6         # біни для опорного рівня навколо лінії: від 6 до 40
+SYMLINE_REF_OUTER_BINS = 40
+COHERENCE_LOW_PERCENTILE = 10      # нижній перцентиль когерентності (метрика burst_coherence_p10)
+MIN_BURSTS_FOR_SPREAD = 3          # менше burst'ів - розкид частоти не оцінюємо
+
 
 def _db(ratio: float) -> float:
-    return float(10.0 * np.log10(max(ratio, EPS)))
+    return float(ratio_to_db(max(ratio, EPS)))
 
 
-def _subsample(x: np.ndarray, max_n: int = 1 << 22) -> np.ndarray:
+def _subsample(x: np.ndarray, max_n: int = SUBSAMPLE_MAX_N) -> np.ndarray:
     """Рівномірне проріджування view-ом (без копії): статистика, а не повний прохід."""
     return x[:: max(1, len(x) // max_n)]
 
@@ -48,7 +68,7 @@ def check_meta(n_in: int, fs: float, cfg: PipelineConfig) -> CheckResult:
         r.add(error("meta", "EMPTY_INPUT", "file has no samples", 0, fatal=True))
     elif dur < h.min_duration_s:
         r.add(error("meta", "INPUT_TOO_SHORT",
-                    f"duration {dur * 1e3:.1f} ms is below the minimum {h.min_duration_s * 1e3:.0f} ms",
+                    f"duration {dur * MS_PER_S:.1f} ms is below the minimum {h.min_duration_s * MS_PER_S:.0f} ms",
                     dur, h.min_duration_s, fatal=True))
     return r
 
@@ -129,21 +149,21 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
     r, h, fe = CheckResult(), cfg.health, cfg.front
     fs, nfft = fe.work_fs_hz, h.spec_nfft
     nb = len(xw) // nfft
-    if nb < 8:
+    if nb < SPEC_MIN_BLOCKS:
         r.add(info("spectrum", "SPEC_SKIPPED", "not enough samples for spectral analysis"))
         return r
     X = xw[: nb * nfft].reshape(nb, nfft)
     sel = _select_blocks(nb, h.spec_max_blocks)
-    B = 256
+    B = SPEC_BATCH_BLOCKS
 
     bp = np.empty(len(sel))                                  # потужність блоків
     for i in range(0, len(sel), B):
         bp[i:i + B] = power(X[sel[i:i + B]]).mean(axis=1)
-    p5, p95 = np.percentile(bp, [5, 95])
+    p5, p95 = np.percentile(bp, SWING_PERCENTILES)
     swing = _db((p95 + EPS) / (p5 + EPS))
     r.metrics["spec_power_swing_db"] = swing
-    active = bp > np.percentile(bp, 10) * 10 ** (h.spec_active_db / 10)
-    if active.sum() < 3:
+    active = bp > np.percentile(bp, ACTIVE_FLOOR_PERCENTILE) * db_to_ratio(h.spec_active_db)
+    if active.sum() < SPEC_MIN_ACTIVE_BLOCKS:
         active[:] = True
     act = sel[active]
     if len(act) > h.spec_max_active:
@@ -165,28 +185,28 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
     P /= len(act)
     E /= len(act)
 
-    S = np.convolve(np.fft.fftshift(P), np.ones(5) / 5, mode="same")
+    S = np.convolve(np.fft.fftshift(P), np.ones(SPEC_SMOOTH_BINS) / SPEC_SMOOTH_BINS, mode="same")
     freqs = np.fft.fftshift(np.fft.fftfreq(nfft, 1 / fs))
     c0 = nfft // 2
     noise = float(np.percentile(S, h.spec_noise_percentile))
-    mask = S > noise * 10 ** (h.spec_signal_db / 10)
+    mask = S > noise * db_to_ratio(h.spec_signal_db)
     r.metrics["spec_noise_floor_db"] = _db(noise)
 
-    if mask.sum() < 8:
+    if mask.sum() < SPEC_MIN_SIGNAL_BINS:
         r.add(warn("spectrum", "SPEC_NO_SIGNAL",
                    "no distinct band above noise in the spectrum: no signal found, or it is below the threshold "
                    f"(threshold {h.spec_signal_db:.0f} dB above noise)"))
         return r
 
     Sig = np.where(mask, S - noise, 0.0)
-    Sig[c0 - 3:c0 + 4] = 0.0                                  # DC-пік не псує центроїд і ширину
+    Sig[c0 - DC_EXCLUDE_HALF_BINS:c0 + DC_EXCLUDE_HALF_BINS + 1] = 0.0                                  # DC-пік не псує центроїд і ширину
     tot = Sig.sum()
     if tot <= 0:
         return r
     centroid = float((freqs * Sig).sum() / tot)
     cs = np.cumsum(Sig)
-    lo = float(freqs[np.searchsorted(cs, 0.005 * tot)])
-    hi = float(freqs[min(np.searchsorted(cs, 0.995 * tot), nfft - 1)])
+    lo = float(freqs[np.searchsorted(cs, BW99_LO_FRAC * tot)])
+    hi = float(freqs[min(np.searchsorted(cs, BW99_HI_FRAC * tot), nfft - 1)])
     bw, bw_exp = hi - lo, fe.symbol_rate_hz * (1 + fe.rrc_rolloff)
     r.metrics.update(spec_coarse_offset_hz=centroid, spec_bw99_hz=bw, spec_bw_ratio=bw / bw_exp)
 
@@ -207,17 +227,19 @@ def check_spectrum(xw: np.ndarray, cfg: PipelineConfig) -> CheckResult:
                    f"(symbol_rate*(1+rolloff)): does not look like a single channel of the configured type",
                    ratio, h.bw_max_ratio))
 
-    near = np.r_[S[c0 - 60:c0 - 10], S[c0 + 11:c0 + 61]]
-    dc_db = _db(S[c0 - 1:c0 + 2].max() / max(float(np.median(near)), EPS))
+    near = np.r_[S[c0 - DC_NEAR_OUTER_BINS:c0 - DC_NEAR_INNER_BINS],
+                 S[c0 + DC_NEAR_INNER_BINS + 1:c0 + DC_NEAR_OUTER_BINS + 1]]
+    dc_db = _db(S[c0 - DC_PEAK_HALF_BINS:c0 + DC_PEAK_HALF_BINS + 1].max() / max(float(np.median(near)), EPS))
     r.metrics["spec_dc_spike_db"] = dc_db
     if dc_db > h.dc_spike_warn_db:
         r.add(warn("spectrum", "DC_SPIKE",
                    f"there is a {dc_db:.1f} dB peak at 0 Hz above neighboring bins", dc_db, h.dc_spike_warn_db))
 
     k0 = int(round(fe.symbol_rate_hz / fs * nfft))
-    if k0 + 41 < len(E):
-        ref = float(np.median(np.r_[E[k0 - 40:k0 - 6], E[k0 + 7:k0 + 41]]))
-        line_db = _db(E[k0 - 1:k0 + 2].max() / max(ref, EPS))
+    if k0 + SYMLINE_REF_OUTER_BINS + 1 < len(E):
+        ref = float(np.median(np.r_[E[k0 - SYMLINE_REF_OUTER_BINS:k0 - SYMLINE_REF_INNER_BINS],
+                                E[k0 + SYMLINE_REF_INNER_BINS + 1:k0 + SYMLINE_REF_OUTER_BINS + 1]]))
+        line_db = _db(E[k0 - SYMLINE_PEAK_HALF_BINS:k0 + SYMLINE_PEAK_HALF_BINS + 1].max() / max(ref, EPS))
         r.metrics["spec_symline_db"] = line_db
         if line_db < h.symline_min_db:
             r.add(warn("spectrum", "SYMBOL_LINE",
@@ -274,7 +296,7 @@ def check_bursts(bursts, rejected: int, failed: int, first_error: Optional[str],
     limit = ambiguity_hz(cfg.front.symbol_rate_hz)
     near = float(np.mean(np.abs(freq) > h.near_limit_frac * limit))
     r.metrics.update(burst_coherence_median=float(np.median(coh)),
-                     burst_coherence_p10=float(np.percentile(coh, 10)),
+                     burst_coherence_p10=float(np.percentile(coh, COHERENCE_LOW_PERCENTILE)),
                      burst_phase_rms_median_deg=float(np.median(rms)),
                      burst_freq_median_hz=float(np.median(freq)),
                      burst_freq_std_hz=float(np.std(freq)),
@@ -283,7 +305,7 @@ def check_bursts(bursts, rejected: int, failed: int, first_error: Optional[str],
         diff = float(np.median(freq) - spec_offset_hz)
         r.metrics["burst_vs_spec_offset_hz"] = diff
         if abs(diff) > h.freq_mismatch_hz:
-            step = cfg.front.symbol_rate_hz / 4
+            step = cfg.front.symbol_rate_hz / DQPSK_PHASE_STATES
             r.add(error("bursts", "FREQ_ALIAS",
                         f"burst-based offset ({np.median(freq):+.0f} Hz) disagrees with the spectral centroid "
                         f"({spec_offset_hz:+.0f} Hz) by {diff:+.0f} Hz (wrap period {step:.0f} Hz): "
@@ -298,7 +320,7 @@ def check_bursts(bursts, rejected: int, failed: int, first_error: Optional[str],
         r.add(warn("bursts", "FREQ_NEAR_LIMIT",
                    f"in {near:.0%} of bursts |f| > {h.near_limit_frac:.0%} of the ambiguity limit ±{limit:.0f} Hz: "
                    "phase wrap is possible, bits are unreliable", near, h.near_limit_share_warn))
-    if n >= 3 and np.std(freq) > h.freq_spread_warn_hz:
+    if n >= MIN_BURSTS_FOR_SPREAD and np.std(freq) > h.freq_spread_warn_hz:
         r.add(warn("bursts", "FREQ_UNSTABLE",
                    f"frequency offset is scattered across bursts (sigma={np.std(freq):.0f} Hz): check "
                    "whether the recording has a single source and the frequency is not drifting",

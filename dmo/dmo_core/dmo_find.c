@@ -58,7 +58,7 @@ int dmo_find_bursts(const uint8_t *stream, size_t len, struct dmo_found **found,
 			continue;
 
 		if (n == cap) {
-			size_t ncap = cap ? cap * 2 : 64;
+			size_t ncap = cap ? cap * 2 : DMO_INITIAL_CAP_ARRAY;
 			struct dmo_found *tmp = realloc(arr, ncap * sizeof(*arr));
 
 			if (!tmp) {

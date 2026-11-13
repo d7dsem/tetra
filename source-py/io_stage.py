@@ -23,7 +23,8 @@
 import numpy as np
 from scipy.io import wavfile
 
-from config import BIN4_DEFAULT_LAYOUT, BIN4_DEFAULT_START_EXCESS_BITS, BIN4_SLOT_TOLERANCE_BITS
+from config import (BIN4_DEFAULT_LAYOUT, BIN4_DEFAULT_START_EXCESS_BITS, BIN4_SLOT_TOLERANCE_BITS,
+                    INT16_FULL_SCALE)
 from pattern_check import (BURST_LAYOUT_BY_NAME, KNOWN_FIELDS, SLOT_BITS, burst_type, classify_burst,
                            summarize_recording)
 
@@ -51,7 +52,7 @@ def load_iq(path: str, fs_hint=None):
     (без float32-копій I і Q та проміжного complex)."""
     fs, d = _open_int16_iq(path, fs_hint)
     x = np.empty(len(d), dtype=np.complex64)
-    k = np.float32(1.0 / 32768.0)
+    k = np.float32(1.0 / INT16_FULL_SCALE)
     np.multiply(d[:, 0], k, out=x.real, dtype=np.float32)
     np.multiply(d[:, 1], k, out=x.imag, dtype=np.float32)
     return fs, x
@@ -76,10 +77,12 @@ def write_bursts(path: str, bursts) -> None:
     def fmt(cells):
         return " ".join(c.rjust(w) for c, w in zip(cells[:-1], widths)) + " " + cells[-1]
 
+    ROW_PREFIX_W = 14       # ширина префікса рядка "#   NAME (NN) " перед послідовністю
+    PATTERN_COL_GAP = 2     # пробіли між послідовністю й колонками лічильників
     summ = summarize_recording(bursts)
     pat_w = max(len(p) for p, _, st in KNOWN_FIELDS.values() if st == "ok")
     with open(path, "w") as f:
-        f.write("# known TETRA sequences (bits 0/1, ETSI EN 300 392-2, 9.4.4.3):".ljust(14 + pat_w + 2)
+        f.write("# known TETRA sequences (bits 0/1, ETSI EN 300 392-2, 9.4.4.3):".ljust(ROW_PREFIX_W + pat_w + PATTERN_COL_GAP)
                 + f"{'exact':>8} {f'err<={summ.threshold:.0%}':>10} {'total':>7}\n")
         for name, (pattern, _, status) in KNOWN_FIELDS.items():
             if status == "ok":
@@ -103,11 +106,12 @@ def write_bursts(path: str, bursts) -> None:
 
 def _write_stream(stream, path: str, bitorder: str, bits_path=None) -> None:
     """Пише біти двома способами: path - упаковано по 8 біт у байт (порядок у байті - bitorder,
-    "little"/"big"), bits_path (якщо задано) - БЕЗ упаковки, один біт у байті (0/1) у порядку
+    "little"/"big"; None - не писати), bits_path (якщо задано) - БЕЗ упаковки, один біт у байті (0/1) у порядку
     передачі, довжина точно len(stream); порядок бітів у байті там не має значення. Другий
     формат - вхід dmo_rx."""
-    with open(path, "wb") as f:
-        f.write(np.packbits(stream, bitorder=bitorder).tobytes())
+    if path:
+        with open(path, "wb") as f:
+            f.write(np.packbits(stream, bitorder=bitorder).tobytes())
     if bits_path:
         with open(bits_path, "wb") as f:
             f.write(stream.tobytes())

@@ -12,10 +12,14 @@
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
-from config import PipelineConfig
+from config import MEGA, RATE_MATCH_TOL_HZ, PipelineConfig
 from health import CheckResult, error, info, warn
 
-MB = 1e6
+MB = MEGA                        # байтів у мегабайті
+CGROUP_V1_UNLIMITED_BITS = 60    # cgroup v1: ліміт >= 2^60 означає "необмежено"
+KIB = 1024                       # /proc/meminfo дає кілобайти (КіБ)
+MAX_FIT_DURATION_S = 1e7         # верхня межа пошуку найбільшої тривалості запису
+BISECT_ITERATIONS = 60           # кроків бісекції для цієї тривалості
 
 
 def _read(path: str) -> Optional[str]:
@@ -39,7 +43,7 @@ def available_memory_bytes(meminfo: str = "/proc/meminfo",
     lim, use = _read(f"{cg1}/memory.limit_in_bytes"), _read(f"{cg1}/memory.usage_in_bytes")
     if lim and use:
         try:
-            if int(lim) < (1 << 60):       # "необмежено" = величезне число
+            if int(lim) < (1 << CGROUP_V1_UNLIMITED_BITS):       # "необмежено" = величезне число
                 cands.append((int(lim) - int(use), "cgroup v1"))
         except ValueError:
             pass
@@ -47,7 +51,7 @@ def available_memory_bytes(meminfo: str = "/proc/meminfo",
     if txt:
         for line in txt.splitlines():
             if line.startswith("MemAvailable:"):
-                cands.append((int(line.split()[1]) * 1024, "/proc/meminfo MemAvailable"))
+                cands.append((int(line.split()[1]) * KIB, "/proc/meminfo MemAvailable"))
                 break
     return min(cands) if cands else None
 
@@ -72,7 +76,7 @@ class MemoryEstimate:
 def _peak(n_in: float, fs: float, cfg: PipelineConfig):
     m = cfg.memory
     work_fs = cfg.front.work_fs_hz
-    resampled = abs(fs - work_fs) > 1e-6
+    resampled = abs(fs - work_fs) > RATE_MATCH_TOL_HZ
     n_w = n_in * work_fs / fs
     dur = n_in / fs
     x = m.b_per_input_sample * n_in
@@ -97,8 +101,8 @@ def estimate_memory(n_in: int, fs: float, cfg: PipelineConfig,
     if available is not None:
         est.available_bytes, est.source = available
         est.ok = est.required_bytes <= est.available_bytes
-        lo, hi = 0.0, 1e7                          # найбільша тривалість, що вміщується
-        for _ in range(60):
+        lo, hi = 0.0, MAX_FIT_DURATION_S                          # найбільша тривалість, що вміщується
+        for _ in range(BISECT_ITERATIONS):
             mid = (lo + hi) / 2
             if _peak(mid * fs, fs, cfg)[2] * sf <= est.available_bytes:
                 lo = mid
@@ -109,7 +113,7 @@ def estimate_memory(n_in: int, fs: float, cfg: PipelineConfig,
 
 
 def format_report(e: MemoryEstimate) -> str:
-    L = [f"Input: {e.duration_s:.1f} s, {e.n_in/1e6:.2f} M samples @ {e.fs:.0f} Hz"
+    L = [f"Input: {e.duration_s:.1f} s, {e.n_in/MEGA:.2f} M samples @ {e.fs:.0f} Hz"
          f"{' (resampling required)' if e.resampled else ''}",
          f"Peak estimate: {e.peak_bytes/MB:.0f} MB, with margin: {e.required_bytes/MB:.0f} MB"
          f"  (bottleneck: {e.bottleneck})"]

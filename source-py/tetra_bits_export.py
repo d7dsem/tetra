@@ -35,17 +35,19 @@ import numpy as np
 import burst_search
 import front_end
 import symbols
-from config import PipelineConfig
+from config import DQPSK_STEP_DEG, EPS_DIV, MEGA, PipelineConfig
 from io_stage import load_iq, probe_input
 from pattern_check import SLOT_BITS
+from pipeline import MIN_BURST_SYMBOLS
 
+MAX_SYM_LEVEL = 3   # символи диф. фази: -3, -1, +1, +3 (кратні 45 градусам)
 SYM_TO_BITS = {-3: (1, 1), -1: (1, 0), 1: (0, 0), 3: (0, 1)}
 
 
 def phase_to_sym(d: np.ndarray, sign: int) -> np.ndarray:
     deg = sign * np.degrees(np.angle(d))
-    sym = np.round(deg / 45.0).astype(int)
-    sym = np.clip(sym, -3, 3)
+    sym = np.round(deg / DQPSK_STEP_DEG).astype(int)
+    sym = np.clip(sym, -MAX_SYM_LEVEL, MAX_SYM_LEVEL)
     sym = np.where(sym == 0, 1, sym)
     sym = np.where(sym == -2, -1, sym)
     sym = np.where(sym == 2, 1, sym)
@@ -69,10 +71,10 @@ def _burst_dibits(y, sr, cfg):
     for s, e in sr.final:
         tau = symbols.estimate_timing(y[s:e], cfg.front.sps)
         sym_iq = symbols.sample_symbols(y, s, e, tau, cfg.front, cfg.timing)
-        if len(sym_iq) < 3:
+        if len(sym_iq) < MIN_BURST_SYMBOLS:
             continue
         d = sym_iq[1:] * np.conj(sym_iq[:-1])
-        d = d / (np.abs(d) + 1e-12)
+        d = d / (np.abs(d) + EPS_DIV)
         out.append((s, d))
     return out
 
@@ -138,7 +140,7 @@ def main(argv=None):
 
     cfg = PipelineConfig()
     fs0, n_in = probe_input(a.infile, a.fs)
-    print(f"Input: {n_in/fs0:.1f} s, {n_in/1e6:.2f} M samples @ {fs0:.0f} Hz")
+    print(f"Input: {n_in/fs0:.1f} s, {n_in/MEGA:.2f} M samples @ {fs0:.0f} Hz")
 
     fs, x = load_iq(a.infile, a.fs)
     xw = front_end.to_work_rate(x, fs, cfg.front)

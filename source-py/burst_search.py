@@ -22,7 +22,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 from scipy.ndimage import uniform_filter1d
 
-from config import SearchConfig
+from config import EPS_POWER, SearchConfig, db_to_ratio, ratio_to_db
 
 Segments = List[Tuple[int, int]]
 
@@ -113,8 +113,8 @@ def detect_segments(env: np.ndarray, floor: np.ndarray,
     точці області env > floor+on_db. Кордони визначає нижчий поріг off_db."""
     if off_db > on_db:
         raise ValueError("off_db має бути <= on_db")
-    weak = env > _scaled(floor, 10 ** (off_db / 10))
-    strong = env > _scaled(floor, 10 ** (on_db / 10))
+    weak = env > _scaled(floor, db_to_ratio(off_db))
+    strong = env > _scaled(floor, db_to_ratio(on_db))
     return [(s, e) for s, e in mask_to_segments(weak) if strong[s:e].any()]
 
 
@@ -157,20 +157,22 @@ def search_bursts(y: np.ndarray, cfg: Optional[SearchConfig] = None) -> SearchRe
 
 def describe(res: SearchResult) -> str:
     fl = float(np.median(res.floor))
-    return (f"floor(median)={10*np.log10(fl+1e-20):.1f} dB  "
+    return (f"floor(median)={ratio_to_db(fl+EPS_POWER):.1f} dB  "
             f"raw={len(res.raw)} -> merged={len(res.merged)} -> "
             f"filtered={len(res.filtered)} -> final={len(res.final)}")
 
 
 def plot_search(res: SearchResult, fs: float):
     import matplotlib.pyplot as plt
+    FIGSIZE = (12, 4)
+    SEGMENT_ALPHA = 0.2
     t = np.arange(len(res.env)) / fs
-    db = lambda a: 10 * np.log10(np.asarray(a) + 1e-20)
-    plt.figure(figsize=(12, 4))
+    db = lambda a: ratio_to_db(np.asarray(a) + EPS_POWER)
+    plt.figure(figsize=FIGSIZE)
     plt.plot(t, db(res.env), label="env")
     plt.plot(t, db(res.floor), label="floor")
     plt.plot(t, db(res.floor) + res.cfg.on_db, "--", label="on")
     plt.plot(t, db(res.floor) + res.cfg.off_db, ":", label="off")
     for s, e in res.final:
-        plt.axvspan(s / fs, e / fs, alpha=0.2, color="g")
+        plt.axvspan(s / fs, e / fs, alpha=SEGMENT_ALPHA, color="g")
     plt.xlabel("s"); plt.ylabel("dB"); plt.legend(); plt.show()

@@ -1,8 +1,10 @@
 """
-Usage:  tetra_demod in.wav -o stem      (-> stem.txt, stem.bin; without -o: <in>.txt, <in>.bin)
+Usage:  tetra_demod in.wav -o stem      (-> stem.txt, stem.bits; without -o: <in>.txt, <in>.bits)
         tetra_demod in.cs16 --fs 192000 --set search.on_db=10
         tetra_demod in.wav --diagnose-only --report health.json
         tetra_demod --print-config
+
+Artifacts: -a bits,txt (default: txt,bits); -a all = txt, bin, bin2-4, bits, bits2-4.
 
 Exit codes: 0 ok/degraded, 1 degraded with --strict, 2 failed (has ERROR).
 """
@@ -20,12 +22,49 @@ from memcheck import available_memory_bytes, estimate_memory, format_report, mem
 from pipeline import describe, run
 
 
+ARTIFACT_HELP = """artifacts for -a (STEM.<ext>):
+  txt    burst list, one text row per burst: time, start sample, length, SNR, freq, coherence, flags, bits
+  bin    bits of all bursts back to back, packed 8 per byte (bit order: -e); no burst boundaries
+  bin2   as bin, each burst zero-padded to a multiple of the 510-bit slot (for bit viewers with a 510 frame)
+  bin3   as bin, each burst at its true phase inside the 510-bit slot period (zero padding on both sides)
+  bin4   one 510-bit slot per burst, aligned by burst type (same fields in the same columns)
+  bits   same stream as bin, 1 bit per byte (0/1), no packing; input of dmo_rx
+  bits2  same as bin2, 1 bit per byte
+  bits3  same as bin3, 1 bit per byte
+  bits4  same as bin4, 1 bit per byte
+  all    every file above"""
+
+SUMMARY_NAME_COL_W = 14   # ширина колонки імені поля; >= найдовша мітка "NTS1 (22bit)" (12) + запас
+
+ARTIFACT_EXTS = ("txt", "bin", "bin2", "bin3", "bin4", "bits", "bits2", "bits3", "bits4")
+DEFAULT_ARTIFACTS = ("txt", "bits")
+
+
+def parse_artifacts(values):
+    """-a значення (повторювані або через кому; "all"; крапка перед розширенням необов'язкова) -> набір розширень."""
+    want = set()
+    for v in values:
+        for item in v.split(","):
+            item = item.strip().lower().lstrip(".")
+            if item == "all":
+                want.update(ARTIFACT_EXTS)
+            elif item in ARTIFACT_EXTS:
+                want.add(item)
+            else:
+                raise ValueError(f"unknown artifact '{item}' (allowed: {', '.join(ARTIFACT_EXTS)}, all)")
+    return want
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="tetra_demod")
+    ap = argparse.ArgumentParser(prog="tetra_demod", epilog=ARTIFACT_HELP,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("infile", nargs="?")
     ap.add_argument("--fs", type=float, help="sample rate for raw .cs16")
     ap.add_argument("-o", "--out", metavar="STEM",
-                    help="output file stem (STEM.txt, STEM.bin); defaults to input name without extension")
+                    help="output file stem (STEM.<ext>); defaults to input name without extension")
+    ap.add_argument("-a", "--artifact", action="append", default=[], metavar="EXT[,EXT...]",
+                    help="which output files to write, by extension: " + ", ".join(ARTIFACT_EXTS) +
+                         ", or all; repeatable or comma-separated (default: " + ",".join(DEFAULT_ARTIFACTS) + ")")
     ap.add_argument("-e", "--endian", type=str.upper, choices=["LE", "BE"], default="BE",
                     help="bit order when packing bits into bytes of .bin/.bin2/.bin3/.bin4 (the unpacked .bits/.bits2/.bits3/.bits4, one bit per byte, are not affected): "
                          "BE = first bit in the most significant bit (default), LE = in the least significant")
@@ -40,6 +79,10 @@ def main(argv=None):
     ap.add_argument("--plot", action="store_true")
     a = ap.parse_args(argv)
 
+    try:
+        want = parse_artifacts(a.artifact) if a.artifact else set(DEFAULT_ARTIFACTS)
+    except ValueError as ex:
+        ap.error(str(ex))
     cfg = apply_overrides(PipelineConfig(), a.set)
     if a.print_config:
         print(json.dumps(dataclasses.asdict(cfg), indent=2))
@@ -67,8 +110,7 @@ def main(argv=None):
             print(f"    error threshold:   {thr:.0%}  (tuning: pattern_check.DETECT_THRESHOLD)")
             print("    by field (ETSI EN 300 392-2, section 9.4.4.3):")
             from pattern_check import KNOWN_FIELDS
-            NAME_W = 14   # >= longest label "NTS1 (22bit)" (12) + margin
-            print(f"      {'name':<{NAME_W}}{'checked':>12}{'exact (0%)':>13}"
+            print(f"      {'name':<{SUMMARY_NAME_COL_W}}{'checked':>12}{'exact (0%)':>13}"
                  f"{f'w/ err (<={thr:.0%})':>17}{'median err':>13}")
             for name in ("FCF", "NTS1", "NTS2", "NTS3", "STS", "ETS", "TAIL", "PHASE"):
                 status = m.get(f"pattern_{name}_status")
@@ -77,14 +119,14 @@ def main(argv=None):
                 pattern, _, _ = KNOWN_FIELDS[name]
                 label = f"{name} ({len(pattern)}bit)" if pattern is not None else f"{name} (?bit)"
                 if status != "ok":
-                    print(f"      {label:<{NAME_W}} not a fixed sequence (computed dynamically)")
+                    print(f"      {label:<{SUMMARY_NAME_COL_W}} not a fixed sequence (computed dynamically)")
                     continue
                 checked = m.get(f"pattern_{name}_checked", 0)
                 exact = m.get(f"pattern_{name}_exact", 0)
                 within = m.get(f"pattern_{name}_within_threshold", 0)
                 err = m.get(f"pattern_{name}_median_err")
                 err_s = f"{err:.1%}" if err is not None else "-"
-                print(f"      {label:<{NAME_W}}{checked:>12}{exact:>13}{within:>17}{err_s:>13}")
+                print(f"      {label:<{SUMMARY_NAME_COL_W}}{checked:>12}{exact:>13}{within:>17}{err_s:>13}")
         if a.report:
             h.to_json(a.report)
         return h.exit_code(a.strict)
@@ -112,17 +154,23 @@ def main(argv=None):
     print(describe(res))
     if not h.fatal and not a.diagnose_only:
         stem = a.out or os.path.splitext(a.infile)[0]
-        write_bursts(stem + ".txt", res.bursts)
         bitorder = {"LE": "little", "BE": "big"}[a.endian]
-        write_bits_bin(stem + ".bin", res.bursts, bitorder, stem + ".bits")
-        write_bits_bin_aligned(stem + ".bin2", res.bursts, SLOT_BITS, bitorder, stem + ".bits2")
-        write_bits_bin_phase_aligned(stem + ".bin3", res.bursts, SLOT_BITS,
-                                     cfg.front.work_fs_hz, cfg.front.symbol_rate_hz, bitorder, stem + ".bits3")
-        n_rows4, n_unanchored = write_bits_bin_structured(stem + ".bin4", res.bursts, bitorder, stem + ".bits4")
-        names = [".txt", ".bin", ".bin2", ".bin3", ".bin4", ".bits", ".bits2", ".bits3", ".bits4"]
-        artefacts += [stem + n for n in names]
-        print("-> " + ", ".join(stem + n for n in names))
-        print(f".bin4: {n_rows4} slots, {n_unanchored} burst(s) of unknown type (default layout and start offset)")
+
+        def path(ext):
+            return stem + "." + ext if ext in want else None
+
+        if "txt" in want:
+            write_bursts(stem + ".txt", res.bursts)
+        write_bits_bin(path("bin"), res.bursts, bitorder, path("bits"))
+        write_bits_bin_aligned(path("bin2"), res.bursts, SLOT_BITS, bitorder, path("bits2"))
+        write_bits_bin_phase_aligned(path("bin3"), res.bursts, SLOT_BITS,
+                                     cfg.front.work_fs_hz, cfg.front.symbol_rate_hz, bitorder, path("bits3"))
+        n_rows4, n_unanchored = write_bits_bin_structured(path("bin4"), res.bursts, bitorder, path("bits4"))
+        names = [stem + "." + e for e in ARTIFACT_EXTS if e in want]
+        artefacts += names
+        print("-> " + ", ".join(names))
+        if want & {"bin4", "bits4"}:
+            print(f".bin4: {n_rows4} slots, {n_unanchored} burst(s) of unknown type (default layout and start offset)")
     if a.plot and res.search is not None:
         import matplotlib.pyplot as plt
         import numpy as np

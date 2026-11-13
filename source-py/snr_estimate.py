@@ -9,14 +9,16 @@ burst'ами (інакше для щільного ефіру шум оціню�
 Сигнал: середня потужність усередині burst'а МІНУС оцінений шум (бо виміряна
 потужність burst'а це сигнал+шум разом, а не чистий сигнал).
 """
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
-Segments = List[Tuple[int, int]]
+from burst_search import Segments
+from config import ratio_to_db
 
+MIN_NOISE_SAMPLES = 16   # менше вільних відліків - оцінки шуму немає
 
-def _power(x: np.ndarray) -> np.ndarray:
+def power_f64(x: np.ndarray) -> np.ndarray:
     re = x.real.astype(np.float64); im = x.imag.astype(np.float64)
     return re * re + im * im
 
@@ -34,7 +36,7 @@ def _free_noise_mask(n: int, all_segments: Segments, lo: int, hi: int) -> np.nda
 
 def estimate_noise_power(raw_power: np.ndarray, burst: Tuple[int, int],
                          all_segments: Segments, window_samples: int,
-                         min_samples: int = 16) -> Optional[float]:
+                         min_samples: int = MIN_NOISE_SAMPLES) -> Optional[float]:
     """Локальна медіана потужності шуму в сусідніх з burst'ом ділянках,
     з винятком зон інших burst'ів. None, якщо вільних відліків замало."""
     s, e = burst; n = len(raw_power)
@@ -62,4 +64,4 @@ def estimate_burst_snr_db(raw_power: np.ndarray, burst: Tuple[int, int],
     signal = p_total - noise
     if signal <= 0:
         return None
-    return float(10 * np.log10(signal / noise))
+    return float(ratio_to_db(signal / noise))

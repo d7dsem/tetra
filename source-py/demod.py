@@ -12,12 +12,15 @@ from typing import Tuple
 
 import numpy as np
 
-from config import MapConfig
+from config import DQPSK_PHASE_STATES, EPS_DIV, MapConfig
+
+FREQ_AMBIGUITY_DIVISOR = 2 * DQPSK_PHASE_STATES   # |theta| < pi/4 -> |f| < symbol_rate / 8
+WORST_PHASE_RMS_DEG = 180.0                       # значення для порожнього burst'а
 
 
 def ambiguity_hz(symbol_rate_hz: float) -> float:
     """Межа однозначності оцінки тонкого зсуву: |f| < symbol_rate/8."""
-    return symbol_rate_hz / 8.0
+    return symbol_rate_hz / FREQ_AMBIGUITY_DIVISOR
 
 
 def diff_demod(sym: np.ndarray) -> np.ndarray:
@@ -25,7 +28,7 @@ def diff_demod(sym: np.ndarray) -> np.ndarray:
     d = np.conjugate(sym[:-1])
     d *= sym[1:]
     a = np.abs(d)
-    a += 1e-12
+    a += EPS_DIV
     d /= a
     return d
 
@@ -34,7 +37,7 @@ def estimate_freq_offset(d: np.ndarray) -> float:
     """Рад/символ. Однозначно для |theta| < pi/4 (|f| < symbol_rate/8). d не змінюється."""
     d4 = np.square(d)
     np.square(d4, out=d4)
-    return float(np.angle(-d4.mean()) / 4)
+    return float(np.angle(-d4.mean()) / DQPSK_PHASE_STATES)
 
 
 def correct_freq(d: np.ndarray, theta: float) -> np.ndarray:
@@ -58,11 +61,11 @@ def quality_metrics(d: np.ndarray) -> Tuple[float, float]:
     """coherence: |mean(d^4)| (1 ідеально, ~0 шум/не та модуляція);
     phase_rms_deg: розкид фази навколо найближчої ідеальної точки. d не змінюється."""
     if len(d) == 0:
-        return 0.0, 180.0
+        return 0.0, WORST_PHASE_RMS_DEG
     d4 = np.square(d)
     np.square(d4, out=d4)
     coherence = float(np.abs(d4.mean()))
     np.negative(d4, out=d4)
     err = np.angle(d4)                   # = 4 * відхилення від ідеалу
-    rms = float(np.sqrt(np.dot(err, err) / len(err))) / 4
+    rms = float(np.sqrt(np.dot(err, err) / len(err))) / DQPSK_PHASE_STATES
     return coherence, float(np.degrees(rms))

@@ -10,6 +10,8 @@
 from dataclasses import dataclass, field, replace
 from typing import Optional, Tuple
 
+import numpy as np
+
 # =====================================================================
 #                           CONSTANTS (TUNING)
 # =====================================================================
@@ -17,6 +19,33 @@ from typing import Optional, Tuple
 # --- Сигнал (визначено стандартом TETRA, зазвичай не чіпати) ----------
 SYMBOL_RATE_HZ = 18000.0
 RRC_ROLLOFF = 0.35
+
+# --- Спільні константи (не тюнять): одиниці, формати, математика ------
+POWER_DB_FACTOR = 10.0        # dB = 10 * log10(відношення потужностей)
+EPS_POWER = 1e-20             # додається під log10 потужності, щоб не брати log(0)
+EPS_DIV = 1e-12               # захист від ділення на нуль при нормуванні
+RATE_MATCH_TOL_HZ = 1e-6      # частоти дискретизації, що різняться менше, вважаються однаковими
+INT16_FULL_SCALE = 32768.0    # відлік int16 -> [-1, 1)
+INT16_MIN = -32768
+INT16_MAX = 32767
+MEGA = 1e6                    # множник "мега" (МБ, млн відліків)
+MS_PER_S = 1e3
+DQPSK_PHASE_STATES = 4        # pi/4-DQPSK: 4 фазові стани; d^4 знімає модуляцію
+DQPSK_STEP_DEG = 45.0         # крок ідеальних фаз диференційних символів, градуси
+
+
+RESAMPLE_HALF_LEN_FACTOR = 10  # півдовжина FIR ресемплера = factor * max(up, down) відліків (як у resample_poly)
+RESAMPLE_KAISER_BETA = 5.0     # параметр вікна Кайзера (як у resample_poly за замовчуванням)
+
+
+def db_to_ratio(db: float) -> float:
+    """dB -> відношення потужностей."""
+    return 10 ** (db / POWER_DB_FACTOR)
+
+
+def ratio_to_db(ratio):
+    """Відношення потужностей (число або масив) -> dB."""
+    return POWER_DB_FACTOR * np.log10(ratio)
 
 # --- Front-end: робочий формат після ресемплінгу ----------------------
 SPS = 4                       # відліків на символ -> work fs = 72 кГц

@@ -4,6 +4,9 @@
 
 #include "dmo_core.h"
 
+enum { STEM_MAX = 4096, OUT_PATH_MAX = 4200 };	/* path buffers: output stem, stem + extension */
+enum { EXIT_USAGE = 2 };			/* exit codes: EXIT_SUCCESS ok, EXIT_FAILURE error, EXIT_USAGE arguments */
+
 static uint8_t *read_bits(const char *path, size_t *len)
 {
 	FILE *f = fopen(path, "rb");
@@ -15,8 +18,8 @@ static uint8_t *read_bits(const char *path, size_t *len)
 		return NULL;
 	}
 	do {
-		if (cap - n < 65536) {
-			uint8_t *tmp = realloc(buf, cap + 1048576);
+		if (cap - n < DMO_READ_MIN_FREE_BYTES) {
+			uint8_t *tmp = realloc(buf, cap + DMO_READ_GROW_BYTES);
 			if (!tmp) {
 				fprintf(stderr, "dmo_rx: out of memory\n");
 				free(buf);
@@ -24,7 +27,7 @@ static uint8_t *read_bits(const char *path, size_t *len)
 				return NULL;
 			}
 			buf = tmp;
-			cap += 1048576;
+			cap += DMO_READ_GROW_BYTES;
 		}
 		got = fread(buf + n, 1, cap - n, f);
 		n += got;
@@ -64,7 +67,7 @@ struct rec {
 	struct dmo_sync_h h;
 	uint8_t s_bits[DMO_SCH_S_TYPE1_BITS], h_bits[DMO_SCH_H_TYPE1_BITS];
 	enum dnb_kind kind;
-	uint8_t f_bits[DMO_SCH_F_TYPE1_BITS];	/* SCH/F type-1 bits, or STCH in the first 124 */
+	uint8_t f_bits[DMO_SCH_F_TYPE1_BITS];	/* SCH/F type-1 bits, or STCH in the first DMO_SCH_H_TYPE1_BITS */
 };
 
 /* Colour-code identity taken from a decoded DSB */
@@ -77,7 +80,7 @@ static const char *enc_name(unsigned e)
 {
 	static const char *const n[] = {"DM-1", "DM-2-C", "DM-2-A", "DM-2-B"};
 
-	return n[e & 3];
+	return n[e & DMO_ENC_STATE_MASK];
 }
 
 static const char *type_name(enum dmo_burst_type t)
@@ -88,7 +91,7 @@ static const char *type_name(enum dmo_burst_type t)
 /* DM-SETUP, DM-CONNECT ACK and DM-OCCUPIED carry the identity the call's colour code is made of */
 static int is_call_message(unsigned m)
 {
-	return m == 0x08 || m == 0x0c || m == 0x0d;
+	return m == DMO_MSG_SETUP || m == DMO_MSG_CONNECT_ACK || m == DMO_MSG_OCCUPIED;
 }
 
 static void decode_dsb(struct rec *r, const uint8_t *b, struct dcc *strong, struct dcc *weak)
@@ -153,7 +156,7 @@ static void decode_dnb(struct rec *r, const uint8_t *b, const struct dcc *dcc, i
 	r->kind = K_TCH;
 	dmo_descramble(init, both, DMO_SCH_F_CODED_BITS, type4);
 	if (*n_traffic == *cap_traffic) {
-		size_t ncap = *cap_traffic ? *cap_traffic * 2 : 256;
+		size_t ncap = *cap_traffic ? *cap_traffic * 2 : DMO_INITIAL_CAP_TRAFFIC;
 		int16_t *tmp = realloc(*traffic, ncap * DMO_TRAFFIC_RECORD_WORDS * sizeof(int16_t));
 
 		if (!tmp)
@@ -216,7 +219,7 @@ static void stem_of(const char *path, char *stem, size_t n)
 int main(int argc, char **argv)
 {
 	const char *path = NULL, *out_stem = NULL;
-	char stem[4096], out_path[4200];
+	char stem[STEM_MAX], out_path[OUT_PATH_MAX];
 	int verbose = 0, bad_args = 0;
 	size_t len = 0, count = 0;
 	size_t n_dsb = 0, n_dnb1 = 0, n_dnb2 = 0, s_ok = 0, h_ok = 0, f_ok = 0, tch = 0, stch_ok = 0, stch = 0;
@@ -239,23 +242,23 @@ int main(int argc, char **argv)
 	}
 	if (!path || bad_args) {
 		fprintf(stderr, "usage: dmo_rx <bits-file> [-v] [-o STEM]\n");
-		return 2;
+		return EXIT_USAGE;
 	}
 
 	stream = read_bits(path, &len);
 	if (!stream)
-		return 1;
+		return EXIT_FAILURE;
 	if (dmo_find_bursts(stream, len, &found, &count) < 0) {
 		fprintf(stderr, "dmo_rx: out of memory\n");
 		free(stream);
-		return 1;
+		return EXIT_FAILURE;
 	}
 	recs = calloc(count ? count : 1, sizeof(*recs));
 	if (!recs) {
 		fprintf(stderr, "dmo_rx: out of memory\n");
 		free(found);
 		free(stream);
-		return 1;
+		return EXIT_FAILURE;
 	}
 
 	for (size_t i = 0; i < count; i++) {
@@ -288,8 +291,8 @@ int main(int argc, char **argv)
 		const struct dcc *d = strong.valid ? &strong : &weak;
 
 		printf("# colour code from %s DSB: mni %u (mcc %u mnc %u) src %u\n",
-		       strong.valid ? "the last call-message" : "the last decoded", d->mni, d->mni >> 14,
-		       d->mni & 0x3fff, d->src);
+		       strong.valid ? "the last call-message" : "the last decoded", d->mni, d->mni >> DMO_MNC_BITS,
+		       d->mni & DMO_MNC_MASK, d->src);
 	} else {
 		printf("# colour code: none (no DSB with a decoded SCH/H)\n");
 	}
@@ -315,7 +318,7 @@ int main(int argc, char **argv)
 			free(recs);
 			free(found);
 			free(stream);
-			return 1;
+			return EXIT_FAILURE;
 		}
 		fclose(f);
 		printf("-> %s (%zu TCH records for cdecoder)\n", out_path, n_traffic);
@@ -324,5 +327,5 @@ int main(int argc, char **argv)
 	free(recs);
 	free(found);
 	free(stream);
-	return 0;
+	return EXIT_SUCCESS;
 }

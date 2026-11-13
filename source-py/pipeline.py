@@ -21,8 +21,10 @@ from typing import List, Optional
 import numpy as np
 
 import burst_search, checks, coarse_detect, demod, front_end, symbols
-from snr_estimate import _power as _raw_power, estimate_burst_snr_db
+from snr_estimate import estimate_burst_snr_db, power_f64
 from config import PipelineConfig
+
+MIN_BURST_SYMBOLS = 3   # коротший burst не дає диференційної демодуляції
 from health import HealthReport, error
 
 
@@ -59,7 +61,7 @@ def demod_burst(y: np.ndarray, s: int, e: int, cfg: PipelineConfig,
     fe = cfg.front
     tau = symbols.estimate_timing(y[s:e], fe.sps)
     sym = symbols.sample_symbols(y, s, e, tau, fe, cfg.timing)
-    if len(sym) < 3:
+    if len(sym) < MIN_BURST_SYMBOLS:
         return None
     d = demod.diff_demod(sym)
     theta = 0.0
@@ -154,7 +156,7 @@ def run(x: np.ndarray, fs: float, cfg: Optional[PipelineConfig] = None,
     if _stop(h, cfg):
         return res
 
-    raw_power = _raw_power(xw)  # для SNR: ДО видалення xw нижче
+    raw_power = power_f64(xw)  # для SNR: ДО видалення xw нижче
 
     if cfg.coarse.enabled:
         y, ok = _guard(h, cfg, "front_end", _coarse_matched_filter, xw, cfg)

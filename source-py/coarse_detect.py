@@ -17,19 +17,13 @@
 CoarseConfig (параметри тюнінгу, зокрема merge_fraction) живе в config.py,
 єдине джерело істини - тут лише використовується, не визначається заново.
 """
-from typing import List, Tuple
-
 import numpy as np
 
-from config import CoarseConfig
+from burst_search import Segments, mask_to_segments, merge_close
+from config import EPS_POWER, CoarseConfig
+from snr_estimate import power_f64
 
-Segments = List[Tuple[int, int]]
-
-
-def _power(x: np.ndarray) -> np.ndarray:
-    re = x.real.astype(np.float64); im = x.imag.astype(np.float64)
-    return re * re + im * im
-
+OTSU_BINS = 256   # кількість бінів гістограми для порога Оцу
 
 def _boxcar_centered(x: np.ndarray, win: int) -> np.ndarray:
     win = max(1, win)
@@ -40,7 +34,7 @@ def _boxcar_centered(x: np.ndarray, win: int) -> np.ndarray:
     return np.concatenate([np.full(left, out[0]), out, np.full(right, out[-1])])
 
 
-def _otsu_threshold(values: np.ndarray, nbins: int = 256) -> float:
+def _otsu_threshold(values: np.ndarray, nbins: int = OTSU_BINS) -> float:
     hist, edges = np.histogram(values, bins=nbins)
     hist = hist.astype(np.float64); p = hist / hist.sum()
     centers = (edges[:-1] + edges[1:]) / 2
@@ -52,21 +46,6 @@ def _otsu_threshold(values: np.ndarray, nbins: int = 256) -> float:
     return float(centers[int(np.argmax(between))])
 
 
-def _mask_to_segments(mask: np.ndarray) -> Segments:
-    d = np.diff(np.concatenate(([0], mask.astype(np.int8), [0])))
-    return list(zip(np.where(d == 1)[0].tolist(), np.where(d == -1)[0].tolist()))
-
-
-def _merge_close(segs: Segments, gap: int) -> Segments:
-    out: Segments = []
-    for s, e in sorted(segs):
-        if out and s - out[-1][1] <= gap:
-            out[-1] = (out[-1][0], e)
-        else:
-            out.append((s, e))
-    return out
-
-
 def coarse_detect(raw: np.ndarray, sample_rate_hz: float,
                   cfg: CoarseConfig = CoarseConfig()) -> Segments:
     """raw: сирі (ДО matched filter) комплексні семпли. Повертає грубі (start,end)
@@ -76,9 +55,9 @@ def coarse_detect(raw: np.ndarray, sample_rate_hz: float,
     merge_gap = max(1, int(round(cfg.burst_duration_s * cfg.merge_fraction * sample_rate_hz)))
     min_len = max(1, int(round(cfg.burst_duration_s * cfg.min_len_fraction * sample_rate_hz)))
 
-    logp = np.log(_boxcar_centered(_power(raw), smooth_win) + 1e-20)
+    logp = np.log(_boxcar_centered(power_f64(raw), smooth_win) + EPS_POWER)
     thr = _otsu_threshold(logp)
-    segs = _merge_close(_mask_to_segments(logp > thr), merge_gap)
+    segs = merge_close(sorted(mask_to_segments(logp > thr)), merge_gap)
     return [(s, e) for s, e in segs if (e - s) >= min_len]
 
 

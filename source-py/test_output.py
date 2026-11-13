@@ -189,17 +189,30 @@ class TestCliOutputNames(unittest.TestCase):
 
     def test_default_stem_from_input(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._run(d), ["rec.bin", "rec.bin2", "rec.bin3", "rec.bin4", "rec.bits", "rec.bits2", "rec.bits3", "rec.bits4", "rec.txt", "rec.wav"])
+            self.assertEqual(self._run(d), ["rec.bits", "rec.txt", "rec.wav"])
 
     def test_o_is_stem(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertEqual(self._run(d, "-o", os.path.join(d, "out")),
-                             ["out.bin", "out.bin2", "out.bin3", "out.bin4", "out.bits", "out.bits2", "out.bits3", "out.bits4", "out.txt", "rec.wav"])
+            self.assertEqual(self._run(d, "-o", os.path.join(d, "out")), ["out.bits", "out.txt", "rec.wav"])
 
+    def test_artifact_all(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self._run(d, "-a", "all"),
+                             ["rec.bin", "rec.bin2", "rec.bin3", "rec.bin4", "rec.bits", "rec.bits2", "rec.bits3", "rec.bits4", "rec.txt", "rec.wav"])
+
+    def test_artifact_list_repeat_and_dot(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self._run(d, "-a", "bits4,.bin", "--artifact", "bits2"),
+                             ["rec.bin", "rec.bits2", "rec.bits4", "rec.wav"])
+
+    def test_artifact_unknown_is_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            with self.assertRaises(subprocess.CalledProcessError):
+                self._run(d, "-a", "xyz")
 
     def test_bin_matches_txt_bits(self):
         with tempfile.TemporaryDirectory() as d:
-            self._run(d)
+            self._run(d, "-a", "all")
             txt = [l.split()[-1] for l in open(os.path.join(d, "rec.txt")) if not l.startswith("#")]
             bits = np.array(list("".join(txt)), dtype=np.uint8)
             got = np.unpackbits(np.frombuffer(open(os.path.join(d, "rec.bin"), "rb").read(),
