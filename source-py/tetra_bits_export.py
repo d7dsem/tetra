@@ -2,7 +2,7 @@
 Готує IQ-запис у форматі для канального декодера osmo-tetra (tetra-rx).
 
 Обидва burst-пошук і по-burst'овий таймінг - ПЕРЕВИКОРИСТАНІ з основного
-пайплайна (burst_search.search_bursts, symbols.estimate_timing), а не
+пайплайна (burst_search.search_bursts, pipeline.burst_diff_symbols), а не
 вигадані заново; перша версія цього модуля оцінювала таймінг один раз на
 весь файл - причину такого підходу (дрейф, втрата синхронізації) підказав
 user, виправлено.
@@ -34,11 +34,10 @@ import numpy as np
 
 import burst_search
 import front_end
-import symbols
-from config import DQPSK_STEP_DEG, EPS_DIV, MEGA, PipelineConfig
+from config import DQPSK_STEP_DEG, MEGA, PipelineConfig
 from io_stage import load_iq, probe_input
 from pattern_check import SLOT_BITS
-from pipeline import MIN_BURST_SYMBOLS
+from pipeline import burst_diff_symbols
 
 MAX_SYM_LEVEL = 3   # символи диф. фази: -3, -1, +1, +3 (кратні 45 градусам)
 SYM_TO_BITS = {-3: (1, 1), -1: (1, 0), 1: (0, 0), 3: (0, 1)}
@@ -69,13 +68,9 @@ def _burst_dibits(y, sr, cfg):
     успішно обробленому burst'у, у порядку появи."""
     out = []
     for s, e in sr.final:
-        tau = symbols.estimate_timing(y[s:e], cfg.front.sps)
-        sym_iq = symbols.sample_symbols(y, s, e, tau, cfg.front, cfg.timing)
-        if len(sym_iq) < MIN_BURST_SYMBOLS:
-            continue
-        d = sym_iq[1:] * np.conj(sym_iq[:-1])
-        d = d / (np.abs(d) + EPS_DIV)
-        out.append((s, d))
+        td = burst_diff_symbols(y, s, e, cfg)
+        if td is not None:
+            out.append((s, td[1]))
     return out
 
 

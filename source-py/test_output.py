@@ -10,7 +10,7 @@ from scipy.io import wavfile
 
 from io_stage import (write_bits_bin, write_bits_bin_aligned, write_bits_bin_phase_aligned,
                       write_bits_bin_structured, write_bursts)
-from pattern_check import BURST_LAYOUT_BY_NAME, KNOWN_FIELDS
+from pattern_check import BURST_LAYOUT_BY_NAME
 from synth import make_signal
 
 HERE = os.path.dirname(os.path.abspath(__file__))

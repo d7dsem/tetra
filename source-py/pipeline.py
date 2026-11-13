@@ -55,15 +55,23 @@ class PipelineResult:
     failed: int = 0
 
 
+def burst_diff_symbols(y: np.ndarray, s: int, e: int, cfg: PipelineConfig):
+    """Таймінг, відліки символів і диференціальна фаза burst'а y[s:e] -> (tau, d); None, якщо символів менше MIN_BURST_SYMBOLS."""
+    tau = symbols.estimate_timing(y[s:e], cfg.front.sps)
+    sym = symbols.sample_symbols(y, s, e, tau, cfg.front, cfg.timing)
+    if len(sym) < MIN_BURST_SYMBOLS:
+        return None
+    return tau, demod.diff_demod(sym)
+
+
 def demod_burst(y: np.ndarray, s: int, e: int, cfg: PipelineConfig,
                 raw_power: Optional[np.ndarray] = None, all_segments=None,
                 noise_window_samples: int = 0) -> Optional[BurstResult]:
     fe = cfg.front
-    tau = symbols.estimate_timing(y[s:e], fe.sps)
-    sym = symbols.sample_symbols(y, s, e, tau, fe, cfg.timing)
-    if len(sym) < MIN_BURST_SYMBOLS:
+    td = burst_diff_symbols(y, s, e, cfg)
+    if td is None:
         return None
-    d = demod.diff_demod(sym)
+    tau, d = td
     theta = 0.0
     if cfg.freq.enabled:
         theta = demod.estimate_freq_offset(d)
