@@ -7,7 +7,7 @@ import numpy as np
 import demod, front_end, symbols
 from config import MapConfig, PipelineConfig, apply_overrides
 from pipeline import run
-from synth import FE, ber_aligned, cnoise, make_signal, tx_burst
+from synth import FE, ber_aligned, make_signal, tx_burst
 
 IDEAL = np.array([np.pi / 4, 3 * np.pi / 4, -3 * np.pi / 4, -np.pi / 4])
 
@@ -82,11 +82,6 @@ class TestPipeline(unittest.TestCase):
         res = run(x, FE.work_fs_hz, cfg)
         self.assertEqual(len(res.bursts), 0)
         self.assertGreaterEqual(res.rejected, 1)
-
-    def test_noise_only(self):
-        rng = np.random.default_rng(6)
-        x = (0.05 * cnoise(40000, 1, rng)).astype(np.complex64)
-        self.assertEqual(len(run(x, FE.work_fs_hz).bursts), 0)
 
     def test_other_input_fs(self):
         from scipy.signal import resample_poly

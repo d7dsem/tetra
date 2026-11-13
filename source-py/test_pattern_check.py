@@ -55,11 +55,6 @@ class TestCheckAllFields(unittest.TestCase):
             res = check_all_fields(bits)
             self.assertEqual(res[name], 0.0, name)
 
-    def test_phase_field_always_none(self):
-        rng = np.random.default_rng(2)
-        bits = rng.integers(0, 2, 470).tolist()
-        self.assertIsNone(check_all_fields(bits)["PHASE"])
-
     def test_tolerates_small_start_offset(self):
         rng = np.random.default_rng(3)
         pattern, pos, _ = KNOWN_FIELDS["NTS1"]

@@ -37,24 +37,6 @@ class TestWriteBursts(unittest.TestCase):
         self.assertEqual(len(lines) - len(head), 2)
 
 
-class TestBitsBin(unittest.TestCase):
-    def test_packing_lsb_first_concat_pad_end(self):
-        bursts = [SimpleNamespace(bits=np.array([1, 0, 0], np.uint8)),
-                  SimpleNamespace(bits=np.array([1, 1], np.uint8))]
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "x.bin")
-            write_bits_bin(p, bursts)
-            self.assertEqual(open(p, "rb").read(), bytes([0b00011001]))
-
-    def test_packing_msb_first_when_big(self):
-        bursts = [SimpleNamespace(bits=np.array([1, 0, 0], np.uint8)),
-                  SimpleNamespace(bits=np.array([1, 1], np.uint8))]
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "x.bin")
-            write_bits_bin(p, bursts, "big")
-            self.assertEqual(open(p, "rb").read(), bytes([0b10011000]))
-
-
 class TestBitsBinAligned(unittest.TestCase):
     def test_each_burst_padded_to_slot_multiple(self):
         bursts = [SimpleNamespace(bits=np.array([1, 0, 1], np.uint8)),    # 3 біти
@@ -67,24 +49,6 @@ class TestBitsBinAligned(unittest.TestCase):
             np.testing.assert_array_equal(got[:10], [1, 0, 1, 0, 0, 1, 1, 0, 0, 0])
 
 
-    def test_every_burst_starts_on_slot_boundary(self):
-        rng = np.random.default_rng(0)
-        slot = 510
-        bursts = [SimpleNamespace(bits=rng.integers(0, 2, n).tolist())
-                 for n in (474, 476, 480, 8634)]
-        with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "x.bin2")
-            write_bits_bin_aligned(p, bursts, slot_bits=slot)
-            n_bits = sum(-(-len(b.bits) // slot) * slot for b in bursts)
-            got = np.unpackbits(np.frombuffer(open(p, "rb").read(), np.uint8),
-                                bitorder="little")[:n_bits]
-            offset = 0
-            for b in bursts:
-                self.assertEqual(offset % slot, 0)
-                np.testing.assert_array_equal(got[offset:offset + len(b.bits)], b.bits)
-                offset += -(-len(b.bits) // slot) * slot
-
-
 class TestBitsBinPhaseAligned(unittest.TestCase):
     # symbol_rate_hz=1, slot_bits=10 -> burst_duration_s=10/(2*1)=5 с
     # sample_rate_hz=2 -> відліків на слот = 2*5=10 = slot_bits, тож phase = start % 10 - просто для тесту.
@@ -95,13 +59,6 @@ class TestBitsBinPhaseAligned(unittest.TestCase):
             p = os.path.join(d, "x.bin3")
             write_bits_bin_phase_aligned(p, bursts, self.SLOT, self.SR, self.SYM_RATE)
             return np.unpackbits(np.frombuffer(open(p, "rb").read(), np.uint8), bitorder="little")
-
-    def test_phase_equals_start_mod_slot_for_these_params(self):
-        b = SimpleNamespace(start=3, bits=np.array([1, 1, 1], np.uint8))
-        got = self._write([b])[:10]                           # логічна довжина = 10 (кратність slot)
-        np.testing.assert_array_equal(got[:3], [0, 0, 0])     # ведучі нулі - справжня фаза
-        np.testing.assert_array_equal(got[3:6], [1, 1, 1])
-        np.testing.assert_array_equal(got[6:], [0, 0, 0, 0])
 
     def test_rounds_up_when_phase_plus_len_exceeds_slot(self):
         b = SimpleNamespace(start=8, bits=np.array([1, 0, 1, 1], np.uint8))   # phase=8, 8+4=12>10

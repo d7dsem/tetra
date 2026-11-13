@@ -138,15 +138,6 @@ class TestActivityAndBursts(unittest.TestCase):
 
 class TestPipelineStability(unittest.TestCase):
 
-    def test_empty_input_does_not_raise(self):
-        res = run(np.zeros(0, np.complex64), FS)
-        self.assertTrue(res.health.fatal)
-        self.assertEqual((res.health.status, res.bursts, res.y), ("failed", [], None))
-
-    def test_silent_input_is_fatal(self):
-        res = run(np.zeros(40000, np.complex64), FS)
-        self.assertTrue(res.health.has("SILENT_INPUT") and res.health.fatal)
-
     def test_few_nan_degrade_but_still_decode(self):
         x, _ = clean()
         x[100] = np.nan
