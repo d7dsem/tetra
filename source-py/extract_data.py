@@ -1,8 +1,9 @@
-"""Складання файлу з бітів tch_decode (1 біт = 1 байт) + службова інформація пакетів.
+"""Розділення бітів tch_decode (1 біт = 1 байт) на дані й службову частину.
 Пакет (PACKET_BITS): PREFIX (4 байти) + заголовок від магії C0FFEE (MAGIC, PARAM1, PARAM2, RESERVED, COUNTER) + дані.
 Береться ланцюжок магій із кроком рівно PACKET_BITS; решта магій (сигналізація, хвіст) - не дані.
-Вихід: STEM.bin (дані), STEM.hdr.txt (службова інформація); з --ref - порівняння з еталоном."""
-import argparse, os, sys
+Вихід: STEM.bin (дані), STEM.hdr.txt (заголовки пакетів), STEM.svc.txt (все поза пакетами даних: hex-дамп і текстові рядки);
+з --ref - порівняння даних з еталоном."""
+import argparse, os, re, sys
 import numpy as np
 
 MAGIC_HEX = 'c0ffee'
@@ -11,6 +12,9 @@ PREFIX_BITS = 32                     # байти перед магією
 HEADER_BITS = 128                    # від початку магії до даних
 FIELDS = (('MAGIC', 3), ('PARAM1', 4), ('PARAM2', 3), ('RESERVED', 5), ('COUNTER', 1))   # байти від магії; сума = HEADER_BITS/8
 BYTE_BITS = 8
+HEXDUMP_ROW = 16                     # байтів у рядку дампа
+MIN_TEXT_RUN = 8                     # найкоротший текстовий рядок, що вважається змістовним
+TEXT_RUN_RE = re.compile(rb'[ -~]{%d,}' % MIN_TEXT_RUN)
 assert sum(n for _, n in FIELDS) * BYTE_BITS == HEADER_BITS
 
 
@@ -48,10 +52,50 @@ def write_header_report(path, chain, pkts):
         h.write('# PREFIX: %d різних значень з %d пакетів\n' % (len({x[0] for x in pkts}), len(pkts)))
 
 
+def service_segments(chain, n_bits):
+    """Діапазони бітів поза пакетами ланцюжка (пакет займає PACKET_BITS від PREFIX_BITS до магії); порожні відкидаються."""
+    segs, pos = [], 0
+    for p in chain:
+        start = p - PREFIX_BITS
+        if start > pos:
+            segs.append((pos, start))
+        pos = max(pos, start + PACKET_BITS)
+    if n_bits > pos:
+        segs.append((pos, n_bits))
+    return segs
+
+
+def text_runs(s, a, b):
+    """Друковані ASCII-рядки в s[a:b] при будь-якому зсуві бітів 0..BYTE_BITS-1: [(біт, текст)]."""
+    found = []
+    for off in range(BYTE_BITS):
+        n = (b - a - off) // BYTE_BITS
+        if n < MIN_TEXT_RUN:
+            continue
+        raw = np.packbits(s[a + off:a + off + n * BYTE_BITS]).tobytes()
+        found += [(a + off + m.start() * BYTE_BITS, m.group().decode()) for m in TEXT_RUN_RE.finditer(raw)]
+    return sorted(found)
+
+
+def write_service_report(path, s, segs):
+    with open(path, 'w') as h:
+        h.write('# службова частина: біти поза пакетами даних; усього %d сегментів\n' % len(segs))
+        for a, b in segs:
+            h.write('\n== біти %d..%d (%d біт, %d байт від початку сегмента) ==\n' % (a, b, b - a, (b - a) // BYTE_BITS))
+            runs = text_runs(s, a, b)
+            h.write('текстові рядки (>= %d знаків, будь-який зсув біт): %s\n' % (MIN_TEXT_RUN, 'немає' if not runs else ''))
+            for pos, t in runs:
+                h.write('  біт %d: %s\n' % (pos, t))
+            raw = np.packbits(s[a:b - (b - a) % BYTE_BITS]).tobytes()
+            for i in range(0, len(raw), HEXDUMP_ROW):
+                row = raw[i:i + HEXDUMP_ROW]
+                h.write('%6d  %-*s  %s\n' % (i, HEXDUMP_ROW * 3 - 1, row.hex(' '), ''.join(chr(c) if 32 <= c < 127 else '.' for c in row)))
+
+
 def main():
-    ap = argparse.ArgumentParser(description="біти tch_decode -> файл даних + службова інформація пакетів")
+    ap = argparse.ArgumentParser(description="біти tch_decode -> дані, заголовки пакетів, службова частина")
     ap.add_argument("infile", help="файл бітів від tch_decode (1 біт = 1 байт)")
-    ap.add_argument("-o", "--out", metavar="STEM", help="STEM.bin, STEM.hdr.txt (за замовчуванням: вхід без розширення)")
+    ap.add_argument("-o", "--out", metavar="STEM", help="STEM.bin, STEM.hdr.txt, STEM.svc.txt (за замовчуванням: вхід без розширення)")
     ap.add_argument("--ref", metavar="FILE", help="еталонний файл для порівняння")
     a = ap.parse_args()
     s = np.fromfile(a.infile, dtype=np.uint8)
@@ -63,7 +107,9 @@ def main():
     out = b''.join(d for _, _, d in pkts)
     open(stem + '.bin', 'wb').write(out)
     write_header_report(stem + '.hdr.txt', chain, pkts)
-    msg = 'пакетів %d, байт %d -> %s.bin, %s.hdr.txt' % (len(chain), len(out), stem, stem)
+    segs = service_segments(chain, len(s))
+    write_service_report(stem + '.svc.txt', s, segs)
+    msg = 'пакетів %d, байт %d, службових сегментів %d -> %s.bin, .hdr.txt, .svc.txt' % (len(chain), len(out), len(segs), stem)
     if a.ref:
         ref = open(a.ref, 'rb').read()
         msg += ', ref %d: %s' % (len(ref), 'ЗБІГАЄТЬСЯ' if out == ref else 'ВІДРІЗНЯЄТЬСЯ: %d байт' % sum(x != y for x, y in zip(out, ref)))
